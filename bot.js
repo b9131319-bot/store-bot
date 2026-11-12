@@ -575,7 +575,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
                     const supportMsg = `🔔 **تم قبول طلبك برقم:** \`${orderId}\`\n\n` +
                         `🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً عبر اليوزر التالي لإتمام طلبك:\n` +
-                        `👤 الدعم الفني: @abod097644\n` +
+                        `👤 الدعم الفني: @th_s777\n` +
                         `📌 **أرسل لهم رقم طلبك ومشكلتك بالتفصيل ليتم خدمتِك بنجاح!**`;
 
                     await sendMessage(chatId, supportMsg);
@@ -1261,7 +1261,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
             else if (data === 'support') {
                 const supportText = `🛠️ **الدعم الفني وخدمة العملاء:**\n\n` +
-                    `🔹 الدعم الفني: @abod097644\n\n` +
+                    `🔹 الدعم الفني: @th_s777\n\n` +
                     `💡 **أي أحد عنده فكرة تنضاف للبوت يتواصل مع الدعم الفني مباشرة!**`;
                 
                 await editMessageText(chatId, messageId, supportText, {
@@ -1339,7 +1339,7 @@ function processOrder(chatId, serviceKey, user) {
     user.lastOrder = orderId;
     saveDatabase();
     
-    sendMessage(chatId, `✅ **تم تأكيد طلبك برقم:** \`${orderId}\`\n\n🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً (@abod097644) وإرسال رقم طلبك ومشكلتك ليتم تنفيذ الخدمة لك.`);
+    sendMessage(chatId, `✅ **تم تأكيد طلبك برقم:** \`${orderId}\`\n\n🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً (@th_s777) وإرسال رقم طلبك ومشكلتك ليتم تنفيذ الخدمة لك.`);
 }
 
 app.get('/', (req, res) => {
