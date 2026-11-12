@@ -180,7 +180,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 saveDatabase();
 
                 if (chatId.toString() !== ADMIN_CHAT_ID.toString()) {
-                     notifyAdminText = `🚨 **عضو جديد دخل البوت!**\n\n` +
+                    let notifyAdminText = `🚨 **عضو جديد دخل البوت!**\n\n` +
                         `👤 الاسم: ${userName}\n` +
                         `🔗 المعرف: ${userUsername}\n` +
                         `🆔 الأيدي: \`${chatId}\`\n` +
@@ -1355,3 +1355,10 @@ setInterval(() => {
     const appUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
     axios.get(appUrl).catch(() => {});
 }, 10 * 60 * 1000);
+
+// تحديث الويب هوك تلقائياً عند تشغيل البوت
+setTimeout(() => {
+    if (process.env.RENDER_EXTERNAL_URL) {
+        axios.get(`https://api.telegram.org/bot${TOKEN}/setWebhook?url=${process.env.RENDER_EXTERNAL_URL}/webhook/${TOKEN}`).catch(() => {});
+    }
+}, 3000);
