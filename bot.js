@@ -9,8 +9,9 @@ const app = express();
 app.use(bodyParser.json());
 
 const TOKEN = '8455445401:AAFt_f55qgdRLJvrZ5KfEjX3IXVsjaDnxFs';
-const OWNER_CHAT_ID = '8266396167'; // المالك الرئيسي الوحيد
+const OWNER_CHAT_ID = '8266396167'; // الأيدي الأساسي للمالك
 const OWNER_PHONE = '+966 54 864 5130';
+const OWNER_USERNAME = 'abod097644'; // يوزر المالك الجديد المطلوب
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 const BOT_USERNAME = 'th_s777'; 
@@ -21,7 +22,7 @@ const startTime = Date.now();
 let db = {
     users: {},
     admins: {
-        [OWNER_CHAT_ID]: { role: 'owner', name: 'المالك الرئيسي (@th_s777)', addedBy: 'System' }
+        [OWNER_CHAT_ID]: { role: 'owner', name: `المالك الرئيسي (@${OWNER_USERNAME})`, addedBy: 'System' }
     },
     giftCodes: {},
     coupons: {},
@@ -86,7 +87,7 @@ function loadDatabase() {
             const data = fs.readFileSync(DB_FILE, 'utf8');
             const parsed = JSON.parse(data);
             db.users = parsed.users || {};
-            db.admins = parsed.admins || { [OWNER_CHAT_ID]: { role: 'owner', name: 'المالك الرئيسي (@th_s777)', addedBy: 'System' }};
+            db.admins = parsed.admins || { [OWNER_CHAT_ID]: { role: 'owner', name: `المالك الرئيسي (@${OWNER_USERNAME})`, addedBy: 'System' }};
             db.giftCodes = parsed.giftCodes || {};
             db.coupons = parsed.coupons || {};
             db.pointCoupons = parsed.pointCoupons || {};
@@ -236,7 +237,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // استقبال المدخلات الإدارية مع التحقق التام والصارم من Telegram ID والأمان
             if (isAdmin(chatId)) {
                 const adminName = userName;
 
@@ -728,10 +728,9 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     user.lastOrder = orderId;
                     saveDatabase();
 
-                    // قسم الدعم الفني المباشر والجاهز والمضبوط 100%
                     const supportMsg = `🔔 **تم قبول طلبك برقم:** \`${orderId}\`\n\n` +
-                        `🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً عبر اليوزر التالي لإتمام طلبك:\n` +
-                        `👤 الدعم الفني: @${BOT_USERNAME}\n` +
+                        `🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً لإتمام طلبك:\n` +
+                        `👤 الدعم الفني: @${OWNER_USERNAME}\n` +
                         `📞 هاتف الدعم: \`${OWNER_PHONE}\`\n` +
                         `📌 **أرسل لهم رقم طلبك ومشكلتك بالتفصيل ليتم خدمتِك بنجاح!**`;
 
@@ -780,7 +779,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // تحقق صارم وأمني في جميع الأزرار الإدارية
             if (data.startsWith('adm_') || data === 'owner_panel') {
                 if (!isAdmin(chatId)) {
                     await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id, text: '❌ غير مصرح لك بالوصول إلى لوحة الإدارة!', show_alert: true });
@@ -814,7 +812,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                         [{ text: '⬅️ العودة للقائمة الرئيسية', callback_data: 'main_menu' }]
                     ]
                 };
-                await editMessageText(chatId, messageId, `🛠️ **لوحة التحكم الشاملة للرئيس (@th_s777):**\nمرحباً بك يا رئيسنا، اختر القسم المطلوب:`, adminKeyboard);
+                await editMessageText(chatId, messageId, `🛠️ **لوحة التحكم الشاملة للرئيس (@${OWNER_USERNAME}):**\nمرحباً بك يا رئيسنا، اختر القسم المطلوب:`, adminKeyboard);
                 await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
                 return res.sendStatus(200);
             }
@@ -1020,7 +1018,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     `📈 استهلاك الذاكرة (RAM): *${heapMB} MB*\n` +
                     `💻 المعالج (CPU): *${os.cpus()[0]?.model || 'Standard'}*\n\n` +
                     `📞 هاتف الرئيس: \`${OWNER_PHONE}\`\n` +
-                    `👤 يوزر الرئيس: @${BOT_USERNAME}`;
+                    `👤 يوزر الرئيس: @${OWNER_USERNAME}`;
 
                 await editMessageText(chatId, messageId, statsText, {
                     inline_keyboard: [[{ text: '⬅️ رجوع', callback_data: 'owner_panel' }]]
@@ -1544,7 +1542,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
             else if (data === 'support') {
                 const supportText = `🛠️ **الدعم الفني وخدمة العملاء:**\n\n` +
-                    `🔹 الدعم الفني: @${BOT_USERNAME}\n` +
+                    `🔹 الدعم الفني: @${OWNER_USERNAME}\n` +
                     `📞 هاتف الدعم: \`${OWNER_PHONE}\`\n\n` +
                     `💡 **أي أحد عنده فكرة تنضاف للبوت يتواصل مع الدعم الفني مباشرة!**`;
                 
@@ -1663,7 +1661,7 @@ function processOrder(chatId, serviceKey, user) {
     user.lastOrder = orderId;
     saveDatabase();
     
-    sendMessage(chatId, `✅ **تم تأكيد طلبك برقم:** \`${orderId}\`\n\n🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً (@${BOT_USERNAME}) وإرسال رقم طلبك ومشكلتك ليتم تنفيذ الخدمة لك.`);
+    sendMessage(chatId, `✅ **تم تأكيد طلبك برقم:** \`${orderId}\`\n\n🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً (@${OWNER_USERNAME}) وإرسال رقم طلبك ومشكلتك ليتم تنفيذ الخدمة لك.`);
 }
 
 app.get('/', (req, res) => {
