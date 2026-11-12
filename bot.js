@@ -10,8 +10,7 @@ app.use(bodyParser.json());
 
 const TOKEN = '8455445401:AAFt_f55qgdRLJvrZ5KfEjX3IXVsjaDnxFs';
 const OWNER_CHAT_ID = '8266396167'; // الأيدي الأساسي للمالك
-const OWNER_PHONE = '+966 54 864 5130';
-const OWNER_USERNAME = 'abod097644'; // يوزر المالك الجديد المطلوب
+const OWNER_USERNAME = 'abod097644'; // يوزر المالك
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 const BOT_USERNAME = 'th_s777'; 
@@ -731,7 +730,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     const supportMsg = `🔔 **تم قبول طلبك برقم:** \`${orderId}\`\n\n` +
                         `🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً لإتمام طلبك:\n` +
                         `👤 الدعم الفني: @${OWNER_USERNAME}\n` +
-                        `📞 هاتف الدعم: \`${OWNER_PHONE}\`\n` +
                         `📌 **أرسل لهم رقم طلبك ومشكلتك بالتفصيل ليتم خدمتِك بنجاح!**`;
 
                     await sendMessage(chatId, supportMsg);
@@ -1016,8 +1014,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     `💾 حالة قاعدة البيانات: *مستقرة ومحدثة 🟢*\n` +
                     `⏱️ مدة التشغيل: *${hours} ساعة و ${minutes} دقيقة*\n` +
                     `📈 استهلاك الذاكرة (RAM): *${heapMB} MB*\n` +
-                    `💻 المعالج (CPU): *${os.cpus()[0]?.model || 'Standard'}*\n\n` +
-                    `📞 هاتف الرئيس: \`${0599854946}\`\n` +
+                    `💻 المعالج (CPU): *Render Cloud Server*\n\n` +
                     `👤 يوزر الرئيس: @${abod097644}`;
 
                 await editMessageText(chatId, messageId, statsText, {
@@ -1542,8 +1539,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
             else if (data === 'support') {
                 const supportText = `🛠️ **الدعم الفني وخدمة العملاء:**\n\n` +
-                    `🔹 الدعم الفني: @${OWNER_USERNAME}\n` +
-                    `📞 هاتف الدعم: \`${OWNER_PHONE}\`\n\n` +
+                    `🔹 الدعم الفني: @${OWNER_USERNAME}\n\n` +
                     `💡 **أي أحد عنده فكرة تنضاف للبوت يتواصل مع الدعم الفني مباشرة!**`;
                 
                 await editMessageText(chatId, messageId, supportText, {
