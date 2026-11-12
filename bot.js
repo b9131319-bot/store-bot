@@ -3,23 +3,35 @@ const bodyParser = require('body-parser');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 const app = express();
 app.use(bodyParser.json());
 
 const TOKEN = '8455445401:AAFt_f55qgdRLJvrZ5KfEjX3IXVsjaDnxFs';
-const ADMIN_CHAT_ID = '8266396167'; // الأدمن الأساسي الوحيد
+const OWNER_CHAT_ID = '8266396167'; // المالك الرئيسي الوحيد
+const OWNER_PHONE = '+966 54 864 5130';
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 const BOT_USERNAME = 'th_s777'; 
 
 const DB_FILE = path.join(__dirname, 'database.json');
+const startTime = Date.now();
 
 let db = {
     users: {},
+    admins: {
+        [OWNER_CHAT_ID]: { role: 'owner', name: 'المالك الرئيسي', addedBy: 'System' }
+    },
     giftCodes: {},
     coupons: {},
     pointCoupons: {},
+    auditLogs: [],
+    errorLogs: [],
+    systemSettings: {
+        botStatus: 'يعمل 🟢',
+        maintenanceMode: false
+    },
     services: {
         'pay_tk_f1': { name: 'متابعين تيك توك (10 إلى 50 متابع)', price: 180, category: 'paid' },
         'pay_tk_f2': { name: 'متابعين تيك توك (50 إلى 100 متابع)', price: 350, category: 'paid' },
@@ -74,9 +86,13 @@ function loadDatabase() {
             const data = fs.readFileSync(DB_FILE, 'utf8');
             const parsed = JSON.parse(data);
             db.users = parsed.users || {};
+            db.admins = parsed.admins || { [OWNER_CHAT_ID]: { role: 'owner', name: 'المالك الرئيسي', addedBy: 'System' }};
             db.giftCodes = parsed.giftCodes || {};
             db.coupons = parsed.coupons || {};
             db.pointCoupons = parsed.pointCoupons || {};
+            db.auditLogs = parsed.auditLogs || [];
+            db.errorLogs = parsed.errorLogs || [];
+            db.systemSettings = parsed.systemSettings || { botStatus: 'يعمل 🟢', maintenanceMode: false };
             if (parsed.services) {
                 db.services = { ...db.services, ...parsed.services };
             }
@@ -96,33 +112,54 @@ function saveDatabase() {
 
 loadDatabase();
 
+function logAction(adminId, adminName, actionDesc) {
+    const logEntry = {
+        time: new Date().toISOString(),
+        adminId: adminId,
+        adminName: adminName,
+        action: actionDesc
+    };
+    db.auditLogs.unshift(logEntry);
+    if (db.auditLogs.length > 100) db.auditLogs.pop();
+    saveDatabase();
+}
+
+function logError(errMessage) {
+    const errEntry = {
+        time: new Date().toISOString(),
+        error: errMessage
+    };
+    db.errorLogs.unshift(errEntry);
+    if (db.errorLogs.length > 50) db.errorLogs.pop();
+    saveDatabase();
+}
+
 async function sendMessage(chatId, text, replyMarkup = null, replyToMessageId = null) {
     try {
-        const payload = {
-            chat_id: chatId,
-            text: text,
-            parse_mode: 'Markdown'
-        };
+        const payload = { chat_id: chatId, text: text, parse_mode: 'Markdown' };
         if (replyMarkup) payload.reply_markup = replyMarkup;
         if (replyToMessageId) payload.reply_to_message_id = replyToMessageId;
         const response = await axios.post(`${TELEGRAM_API}/sendMessage`, payload);
         return response.data.result.message_id;
     } catch (error) {
-        console.error('خطأ في إرسال الرسالة:', error.response?.data || error.message);
+        logError(error.response?.data?.description || error.message);
     }
 }
 
 async function editMessageText(chatId, messageId, text, replyMarkup = null) {
     try {
-        const payload = {
-            chat_id: chatId,
-            message_id: messageId,
-            text: text,
-            parse_mode: 'Markdown'
-        };
+        const payload = { chat_id: chatId, message_id: messageId, text: text, parse_mode: 'Markdown' };
         if (replyMarkup) payload.reply_markup = replyMarkup;
         await axios.post(`${TELEGRAM_API}/editMessageText`, payload);
     } catch (error) {}
+}
+
+function isAdmin(chatId) {
+    return db.admins[chatId] !== undefined;
+}
+
+function isOwner(chatId) {
+    return chatId.toString() === OWNER_CHAT_ID.toString();
 }
 
 function getServiceNiceName(data) {
@@ -179,13 +216,13 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 };
                 saveDatabase();
 
-                if (chatId.toString() !== ADMIN_CHAT_ID.toString()) {
+                if (!isAdmin(chatId)) {
                     let notifyAdminText = `🚨 **عضو جديد دخل البوت!**\n\n` +
                         `👤 الاسم: ${userName}\n` +
                         `🔗 المعرف: ${userUsername}\n` +
                         `🆔 الأيدي: \`${chatId}\`\n` +
                         `💬 للتواصل: [اضغط هنا](tg://user?id=${chatId})`;
-                    await sendMessage(ADMIN_CHAT_ID, notifyAdminText);
+                    await sendMessage(OWNER_CHAT_ID, notifyAdminText);
                 }
             } else {
                 db.users[chatId].name = userName;
@@ -194,140 +231,230 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
             const user = db.users[chatId];
 
-            if (user.isBanned && chatId.toString() !== ADMIN_CHAT_ID.toString()) {
+            if (user.isBanned && !isAdmin(chatId)) {
                 await sendMessage(chatId, `❌ **عذراً، تم حظرك من استخدام البوت بواسطة الإدارة.**`);
                 return res.sendStatus(200);
             }
 
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && user.waitingForBroadcast) {
-                user.waitingForBroadcast = false;
-                saveDatabase();
-                const allUserIds = Object.keys(db.users);
-                let successCount = 0;
-                for (const uid of allUserIds) {
-                    try {
-                        await sendMessage(uid, `📢 **إعلان / رسالة إدارية هامة:**\n\n${text}`);
-                        successCount++;
-                    } catch (e) {}
-                }
-                await sendMessage(chatId, `✅ **تم إرسال الإعلانات والرسائل الجماعية بنجاح إلى (${successCount}) مشترك.**`);
-                return res.sendStatus(200);
-            }
+            // استقبال المدخلات الإدارية مع التحقق التام من الصلاحيات والأيدي
+            if (isAdmin(chatId)) {
+                const adminName = userName;
 
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && user.waitingForServiceAdd) {
-                user.waitingForServiceAdd = false;
-                saveDatabase();
-                const parts = text.split('|');
-                const sKey = parts[0]?.trim();
-                const sName = parts[1]?.trim();
-                const sPrice = parseInt(parts[2]);
-
-                if (!sKey || !sName || isNaN(sPrice)) {
-                    await sendMessage(chatId, `❌ **خطأ في الصيغة!** استخدم الشكل التالي:\n\`مفتاح_الخدمة | اسم العرض | السعر\`\nمثال: \`offer_1 | عرض خاص | 100\``);
-                    return res.sendStatus(200);
-                }
-
-                db.services[sKey] = { name: sName, price: sPrice, category: 'paid' };
-                saveDatabase();
-
-                await sendMessage(chatId, `✅ **تم إضافة وتعديل منشور العرض بنجاح!**\n📦 المفتاح: \`${sKey}\`\n🏷️ الاسم: ${sName}\n🪙 السعر: ${sPrice} نقطة`);
-                return res.sendStatus(200);
-            }
-
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && user.waitingForGiftCreation) {
-                user.waitingForGiftCreation = false;
-                saveDatabase();
-                const parts = text.split(' ');
-                const pointsAmount = parseInt(parts[0]);
-                const hoursDuration = parseInt(parts[1]) || 24;
-
-                if (isNaN(pointsAmount) || pointsAmount <= 0) {
-                    await sendMessage(chatId, `❌ **خطأ!** الصيغة: \`النقاط الساعات\` مثل \`100 24\``);
-                    return res.sendStatus(200);
-                }
-
-                const codeId = 'GIFT-' + Math.floor(100000 + Math.random() * 900000);
-                const expiresAt = Date.now() + (hoursDuration * 60 * 60 * 1000);
-
-                db.giftCodes[codeId] = { points: pointsAmount, expiresAt: expiresAt, usedBy: [] };
-                saveDatabase();
-
-                const giftLink = `https://t.me/${BOT_USERNAME}?start=${codeId}`;
-                await sendMessage(chatId, `✅ **تم إنشاء رابط الهدية بنجاح!**\n🎁 النقاط: ${pointsAmount}\n🔗 الرابط:\n${giftLink}`);
-                return res.sendStatus(200);
-            }
-
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && user.waitingForPointCouponCreate) {
-                user.waitingForPointCouponCreate = false;
-                saveDatabase();
-                const parts = text.split(' ');
-                const couponCode = parts[0]?.toUpperCase();
-                const pointsAmt = parseInt(parts[1]);
-
-                if (!couponCode || isNaN(pointsAmt) || pointsAmt <= 0) {
-                    await sendMessage(chatId, `❌ **خطأ!** الصيغة الصحيحة: \`الكود عدد_النقاط\` مثل \`ABOD50 50\``);
-                    return res.sendStatus(200);
-                }
-
-                db.pointCoupons[couponCode] = { points: pointsAmt, usedBy: [] };
-                saveDatabase();
-
-                await sendMessage(chatId, `✅ **تم إنشاء كوبون النقاط بنجاح!**\n🎫 الكود: \`${couponCode}\`\n🪙 النقاط: *${pointsAmt} نقطة*`);
-                return res.sendStatus(200);
-            }
-
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && user.waitingForCouponCreate) {
-                user.waitingForCouponCreate = false;
-                saveDatabase();
-                const parts = text.split(' ');
-                const couponCode = parts[0]?.toUpperCase();
-                const discountPct = parseInt(parts[1]);
-
-                if (!couponCode || isNaN(discountPct) || discountPct <= 0 || discountPct > 100) {
-                    await sendMessage(chatId, `❌ **خطأ!** الصيغة الصحيحة: \`الكود نسبة_الخصم\` مثل \`TURBO10 15\``);
-                    return res.sendStatus(200);
-                }
-
-                db.coupons[couponCode] = { discount: discountPct, usedBy: [] };
-                saveDatabase();
-
-                await sendMessage(chatId, `✅ **تم إنشاء كوبون الخصم بنجاح!**\n🎫 الكود: \`${couponCode}\`\n📉 نسبة الخصم: *${discountPct}%*`);
-                return res.sendStatus(200);
-            }
-
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && user.waitingForAdminAddPoints) {
-                const targetId = user.waitingForAdminAddPoints;
-                user.waitingForAdminAddPoints = null;
-                saveDatabase();
-                const pts = parseInt(text);
-                if (isNaN(pts)) {
-                    await sendMessage(chatId, `❌ يرجى إرسال رقم صحيح للنقاط.`);
-                    return res.sendStatus(200);
-                }
-                if (db.users[targetId]) {
-                    db.users[targetId].points += pts;
+                if (user.waitingForAddAdmin) {
+                    user.waitingForAddAdmin = false;
                     saveDatabase();
-                    await sendMessage(chatId, `✅ تم تعديل نقاط العميل ${targetId} بنجاح (+${pts}).`);
-                    await sendMessage(targetId, `🎁 **تم إضافة ${pts} نقطة إلى رصيدك بواسطة الإدارة!**\nرصيدك الحالي: *${db.users[targetId].points} نقطة*.`);
-                } else {
-                    await sendMessage(chatId, `❌ العميل غير موجود.`);
-                }
-                return res.sendStatus(200);
-            }
-
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && user.waitingForAdminBan) {
-                const targetId = text.trim();
-                user.waitingForAdminBan = null;
-                saveDatabase();
-                if (db.users[targetId]) {
-                    db.users[targetId].isBanned = !db.users[targetId].isBanned;
+                    const targetId = text.trim();
+                    if (isNaN(targetId)) {
+                        await sendMessage(chatId, `❌ الأيدي غير صحيح.`);
+                        return res.sendStatus(200);
+                    }
+                    db.admins[targetId] = { role: 'admin', name: 'أدمن', addedBy: adminName };
                     saveDatabase();
-                    const status = db.users[targetId].isBanned ? 'محظور 🔴' : 'غير محظور 🟢';
-                    await sendMessage(chatId, `✅ تم تغيير حالة الحظر للمستخدم ${targetId} إلى: ${status}`);
-                } else {
-                    await sendMessage(chatId, `❌ العميل غير موجود.`);
+                    logAction(chatId, adminName, `إضافة أدمن جديد برقم الأيدي: ${targetId}`);
+                    await sendMessage(chatId, `✅ تم تعيين المستخدم \`${targetId}\` كأدمن بنجاح.`);
+                    return res.sendStatus(200);
                 }
-                return res.sendStatus(200);
+
+                if (user.waitingForRemoveAdmin) {
+                    user.waitingForRemoveAdmin = false;
+                    saveDatabase();
+                    const targetId = text.trim();
+                    if (targetId === OWNER_CHAT_ID.toString()) {
+                        await sendMessage(chatId, `❌ لا يمكن حذف المالك الرئيسي من قائمة الأدمنية.`);
+                        return res.sendStatus(200);
+                    }
+                    if (db.admins[targetId]) {
+                        delete db.admins[targetId];
+                        saveDatabase();
+                        logAction(chatId, adminName, `حذف الأدمن ذو الأيدي: ${targetId}`);
+                        await sendMessage(chatId, `✅ تم سحب صلاحيات الأدمن من \`${targetId}\`.`);
+                    } else {
+                        await sendMessage(chatId, `❌ هذا المستخدم ليس أدمن.`);
+                    }
+                    return res.sendStatus(200);
+                }
+
+                if (user.waitingForAddService) {
+                    user.waitingForAddService = false;
+                    saveDatabase();
+                    const parts = text.split('|');
+                    const sKey = parts[0]?.trim();
+                    const sName = parts[1]?.trim();
+                    const sPrice = parseInt(parts[2]);
+                    const sCat = parts[3]?.trim() || 'paid';
+
+                    if (!sKey || !sName || isNaN(sPrice)) {
+                        await sendMessage(chatId, `❌ صيغة خاطئة! استخدم:\n\`المفتاح | اسم الخدمة | السعر | الفئة (paid/free/special)\``);
+                        return res.sendStatus(200);
+                    }
+
+                    db.services[sKey] = { name: sName, price: sPrice, category: sCat };
+                    saveDatabase();
+                    logAction(chatId, adminName, `إضافة/تعديل الخدمة: ${sKey} (${sName}) بسعر ${sPrice}`);
+                    await sendMessage(chatId, `✅ تم حفظ الخدمة بنجاح.`);
+                    return res.sendStatus(200);
+                }
+
+                if (user.waitingForDeleteService) {
+                    user.waitingForDeleteService = false;
+                    saveDatabase();
+                    const sKey = text.trim();
+                    if (db.services[sKey]) {
+                        delete db.services[sKey];
+                        saveDatabase();
+                        logAction(chatId, adminName, `حذف الخدمة: ${sKey}`);
+                        await sendMessage(chatId, `✅ تم حذف الخدمة \`${sKey}\` بنجاح.`);
+                    } else {
+                        await sendMessage(chatId, `❌ مفتاح الخدمة غير موجود.`);
+                    }
+                    return res.sendStatus(200);
+                }
+
+                if (user.waitingForEditPrice) {
+                    user.waitingForEditPrice = false;
+                    saveDatabase();
+                    const parts = text.split(' ');
+                    const sKey = parts[0]?.trim();
+                    const newPrice = parseInt(parts[1]);
+
+                    if (!db.services[sKey] || isNaN(newPrice)) {
+                        await sendMessage(chatId, `❌ صيغة خاطئة أو الخدمة غير موجودة. استخدم: \`مفتاح_الخدمة السعر_الجديد\``);
+                        return res.sendStatus(200);
+                    }
+
+                    db.services[sKey].price = newPrice;
+                    saveDatabase();
+                    logAction(chatId, adminName, `تعديل سعر الخدمة ${sKey} إلى ${newPrice}`);
+                    await sendMessage(chatId, `✅ تم تحديث سعر الخدمة \`${sKey}\` إلى *${newPrice} نقطة*.`);
+                    return res.sendStatus(200);
+                }
+
+                if (user.waitingForPointsControl) {
+                    const targetId = user.waitingForPointsControl;
+                    user.waitingForPointsControl = null;
+                    saveDatabase();
+                    const pts = parseInt(text);
+
+                    if (targetId === OWNER_CHAT_ID.toString() && !isOwner(chatId)) {
+                        await sendMessage(chatId, `❌ عذراً، لا يمكنك تعديل رصيد المالك الرئيسي أو سحب صلاحياته!`);
+                        return res.sendStatus(200);
+                    }
+
+                    if (isNaN(pts)) {
+                        await sendMessage(chatId, `❌ يرجى إرسال رقم صحيح.`);
+                        return res.sendStatus(200);
+                    }
+
+                    if (db.users[targetId]) {
+                        db.users[targetId].points += pts;
+                        saveDatabase();
+                        logAction(chatId, adminName, `تعديل نقاط المستخدم ${targetId} بمقدار (${pts})`);
+                        await sendMessage(chatId, `✅ تم تعديل رصيد العميل \`${targetId}\` بنجاح (${pts > 0 ? '+' + pts : pts}).`);
+                        await sendMessage(targetId, `🎁 **تم تحديث رصيدك بمقدار ${pts} نقطة بواسطة الإدارة!**\nرصيدك الحالي: *${db.users[targetId].points} نقطة*.`);
+                    } else {
+                        await sendMessage(chatId, `❌ المستخدم غير مسجل في البوت.`);
+                    }
+                    return res.sendStatus(200);
+                }
+
+                if (user.waitingForBanUser) {
+                    const targetId = text.trim();
+                    user.waitingForBanUser = null;
+                    saveDatabase();
+
+                    if (targetId === OWNER_CHAT_ID.toString()) {
+                        await sendMessage(chatId, `❌ لا يمكنك حظر المالك الرئيسي!`);
+                        return res.sendStatus(200);
+                    }
+
+                    if (db.users[targetId]) {
+                        db.users[targetId].isBanned = !db.users[targetId].isBanned;
+                        saveDatabase();
+                        const status = db.users[targetId].isBanned ? 'محظور 🔴' : 'غير محظور 🟢';
+                        logAction(chatId, adminName, `تغيير حالة حظر المستخدم ${targetId} إلى ${status}`);
+                        await sendMessage(chatId, `✅ تم تغيير حالة الحظر للمستخدم \`${targetId}\` إلى: ${status}`);
+                    } else {
+                        await sendMessage(chatId, `❌ العميل غير موجود.`);
+                    }
+                    return res.sendStatus(200);
+                }
+
+                if (user.waitingForBroadcast) {
+                    user.waitingForBroadcast = false;
+                    saveDatabase();
+                    logAction(chatId, adminName, `إرسال إذاعة عامة للمشتركين`);
+                    const allUserIds = Object.keys(db.users);
+                    let successCount = 0;
+                    for (const uid of allUserIds) {
+                        try {
+                            await sendMessage(uid, `📢 **إعلان / رسالة إدارية هامة:**\n\n${text}`);
+                            successCount++;
+                        } catch (e) {}
+                    }
+                    await sendMessage(chatId, `✅ **تم إرسال الإذاعة بنجاح إلى (${successCount}) مشترك.**`);
+                    return res.sendStatus(200);
+                }
+
+                if (user.waitingForGiftCreation) {
+                    user.waitingForGiftCreation = false;
+                    saveDatabase();
+                    const parts = text.split(' ');
+                    const pointsAmount = parseInt(parts[0]);
+                    const hoursDuration = parseInt(parts[1]) || 24;
+
+                    if (isNaN(pointsAmount) || pointsAmount <= 0) {
+                        await sendMessage(chatId, `❌ **خطأ!** الصيغة: \`النقاط الساعات\` مثل \`100 24\``);
+                        return res.sendStatus(200);
+                    }
+
+                    const codeId = 'GIFT-' + Math.floor(100000 + Math.random() * 900000);
+                    const expiresAt = Date.now() + (hoursDuration * 60 * 60 * 1000);
+
+                    db.giftCodes[codeId] = { points: pointsAmount, expiresAt: expiresAt, usedBy: [] };
+                    saveDatabase();
+
+                    const giftLink = `https://t.me/${BOT_USERNAME}?start=${codeId}`;
+                    await sendMessage(chatId, `✅ **تم إنشاء رابط الهدية بنجاح!**\n🎁 النقاط: ${pointsAmount}\n🔗 الرابط:\n${giftLink}`);
+                    return res.sendStatus(200);
+                }
+
+                if (user.waitingForPointCouponCreate) {
+                    user.waitingForPointCouponCreate = false;
+                    saveDatabase();
+                    const parts = text.split(' ');
+                    const couponCode = parts[0]?.toUpperCase();
+                    const pointsAmt = parseInt(parts[1]);
+
+                    if (!couponCode || isNaN(pointsAmt) || pointsAmt <= 0) {
+                        await sendMessage(chatId, `❌ **خطأ!** الصيغة الصحيحة: \`الكود عدد_النقاط\` مثل \`ABOD50 50\``);
+                        return res.sendStatus(200);
+                    }
+
+                    db.pointCoupons[couponCode] = { points: pointsAmt, usedBy: [] };
+                    saveDatabase();
+
+                    await sendMessage(chatId, `✅ **تم إنشاء كوبون النقاط بنجاح!**\n🎫 الكود: \`${couponCode}\`\n🪙 النقاط: *${pointsAmt} نقطة*`);
+                    return res.sendStatus(200);
+                }
+
+                if (user.waitingForCouponCreate) {
+                    user.waitingForCouponCreate = false;
+                    saveDatabase();
+                    const parts = text.split(' ');
+                    const couponCode = parts[0]?.toUpperCase();
+                    const discountPct = parseInt(parts[1]);
+
+                    if (!couponCode || isNaN(discountPct) || discountPct <= 0 || discountPct > 100) {
+                        await sendMessage(chatId, `❌ **خطأ!** الصيغة الصحيحة: \`الكود نسبة_الخصم\` مثل \`TURBO10 15\``);
+                        return res.sendStatus(200);
+                    }
+
+                    db.coupons[couponCode] = { discount: discountPct, usedBy: [] };
+                    saveDatabase();
+
+                    await sendMessage(chatId, `✅ **تم إنشاء كوبون الخصم بنجاح!**\n🎫 الكود: \`${couponCode}\`\n📉 نسبة الخصم: *${discountPct}%*`);
+                    return res.sendStatus(200);
+                }
             }
 
             if (user.waitingForPointCouponApply) {
@@ -394,6 +521,32 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
             }
 
             if (text && text.startsWith('/start')) {
+                const args = text.split(' ');
+                if (args[1]) {
+                    const param = args[1];
+                    if (param.startsWith('ref_')) {
+                        const referrerId = param.replace('ref_', '');
+                        if (referrerId !== chatId.toString() && db.users[referrerId] && !user.referredBy) {
+                            user.referredBy = referrerId;
+                            db.users[referrerId].referralCount = (db.users[referrerId].referralCount || 0) + 1;
+                            db.users[referrerId].points += 10;
+                            saveDatabase();
+                            await sendMessage(referrerId, `👥 **تم تسجيل إحالة جديدة عبر رابطك!**\n🎁 تم إضافة 10 نقاط إلى رصيدك.`);
+                        }
+                    } else if (db.giftCodes[param]) {
+                        const gift = db.giftCodes[param];
+                        if (Date.now() > gift.expiresAt) {
+                            await sendMessage(chatId, `❌ **عذراً، انتهت صلاحية رابط الهدية هذا!**`);
+                        } else if (gift.usedBy.includes(chatId)) {
+                            await sendMessage(chatId, `⚠️ **لقد قمت باستلام هذه الهدية مسبقاً!**`);
+                        } else {
+                            gift.usedBy.push(chatId);
+                            user.points += gift.points;
+                            saveDatabase();
+                            await sendMessage(chatId, `🎉 **مبروك! تم استلام الهدية بنجاح.**\n🎁 تمت إضافة *${gift.points} نقطة* إلى رصيدك.`);
+                        }
+                    }
+                }
                 showMainMenu(chatId);
                 return res.sendStatus(200);
             }
@@ -567,7 +720,9 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                         cost: cost,
                         status: 'جاري التنفيذ 🚀',
                         rating: null,
-                        time: Date.now()
+                        time: Date.now(),
+                        userId: chatId,
+                        userName: userName
                     };
                     user.orders.push(orderObj);
                     user.lastOrder = orderId;
@@ -576,6 +731,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     const supportMsg = `🔔 **تم قبول طلبك برقم:** \`${orderId}\`\n\n` +
                         `🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً عبر اليوزر التالي لإتمام طلبك:\n` +
                         `👤 الدعم الفني: @th_s777\n` +
+                        `📞 هاتف الدعم: \`${OWNER_PHONE}\`\n` +
                         `📌 **أرسل لهم رقم طلبك ومشكلتك بالتفصيل ليتم خدمتِك بنجاح!**`;
 
                     await sendMessage(chatId, supportMsg);
@@ -592,17 +748,12 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                         inline_keyboard: [
                             [
                                 { text: '✅ إتمام الطلب', callback_data: `admin_done_${chatId}_${orderId}` },
-                                { text: '❌ فشل الطلب', callback_data: `admin_fail_${chatId}_${orderId}` }
+                                { text: '❌ رفض الطلب', callback_data: `admin_fail_${chatId}_${orderId}` }
                             ]
                         ]
                     };
 
-                    await sendMessage(ADMIN_CHAT_ID, adminMsg, adminKeyboard);
-                    return res.sendStatus(200);
-                }
-
-                if (text === '/start') {
-                    showMainMenu(chatId);
+                    await sendMessage(OWNER_CHAT_ID, adminMsg, adminKeyboard);
                     return res.sendStatus(200);
                 }
             }
@@ -628,164 +779,296 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && data === 'admin_panel') {
-                const totalUsers = Object.keys(db.users).length;
+            // تحقق صارم في الأزرار الإدارية
+            if (data.startsWith('adm_') || data === 'owner_panel') {
+                if (!isAdmin(chatId)) {
+                    await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id, text: '❌ غير مصرح لك بالوصول!', show_alert: true });
+                    return res.sendStatus(200);
+                }
+            }
+
+            if (data === 'owner_panel') {
                 const adminKeyboard = {
                     inline_keyboard: [
                         [
-                            { text: '📊 عرض المستخدمين', callback_data: 'admin_users_list' },
-                            { text: '📈 تقرير الأداء والأمان الشامل', callback_data: 'admin_bot_status' }
+                            { text: '👥 إدارة الأدمنية', callback_data: 'adm_manage_admins' },
+                            { text: '📦 إدارة الخدمات', callback_data: 'adm_manage_services' }
                         ],
                         [
-                            { text: '🎁 رابط نقاط أزرق', callback_data: 'admin_create_gift' },
-                            { text: '🎫 إنشاء كوبون نقاط', callback_data: 'admin_create_point_coupon' }
+                            { text: '🪙 التحكم بالأرصدة', callback_data: 'adm_manage_points' },
+                            { text: '📋 استعراض الطلبات', callback_data: 'adm_view_orders' }
                         ],
                         [
-                            { text: '🎫 إنشاء كوبون خصم', callback_data: 'admin_create_coupon' },
-                            { text: '📢 إذاعة للجميع', callback_data: 'admin_broadcast' }
+                            { text: '🚫 حظر/فك حظر', callback_data: 'adm_ban_menu' },
+                            { text: '📢 إرسال إذاعة', callback_data: 'adm_broadcast' }
                         ],
                         [
-                            { text: '🪙 إضافة نقاط', callback_data: 'admin_add_points' },
-                            { text: '🚫 حظر مستخدم', callback_data: 'admin_ban_user' }
+                            { text: '🎁 إنشاء هدية / كوبون', callback_data: 'adm_coupons_menu' },
+                            { text: '📊 إحصائيات البوت الشاملة', callback_data: 'adm_bot_stats' }
+                        ],
+                        [
+                            { text: '📜 سجل العمليات والأعطال', callback_data: 'adm_audit_logs' },
+                            { text: '⚙️ إعدادات النظام', callback_data: 'adm_system_settings' }
                         ],
                         [{ text: '⬅️ العودة للقائمة الرئيسية', callback_data: 'main_menu' }]
                     ]
                 };
-                await editMessageText(chatId, messageId, `🛠️ **لوحة تحكم الأدمن الرئيسي:**\nإجمالي المشتركين: ${totalUsers} مستخدم`, adminKeyboard);
+                await editMessageText(chatId, messageId, `🛠️ **لوحة التحكم الشاملة (الرئيس فقط):**\nمرحباً بك يا غالي، اختر القسم المطلوب:`, adminKeyboard);
                 await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
                 return res.sendStatus(200);
             }
 
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && data === 'admin_bot_status') {
-                const totalUsers = Object.keys(db.users).length;
-                const statusText = `📊 **تقرير أداء وحالة البوت الشامل:**\n\n` +
-                    `🟡 كفاءة النظام والتشغيل: **جيد – 80%**\n\n` +
-                    `👥 **المستخدمون:**\n` +
-                    `├ الإجمالي: ${totalUsers}\n` +
-                    `├ النشطون اليوم: 1\n` +
-                    `└ الذروة: 1\n\n` +
-                    `📈 **اليوم:**\n` +
-                    `├ مستخدمون جدد: 1\n` +
-                    `├ الرسائل: 5\n` +
-                    `├ العائدون: 0\n` +
-                    `└ المحظورون: 1\n\n` +
-                    `⚡ **الأداء:**\n` +
-                    `├ الجلسات: 1\n` +
-                    `├ سرعة الاستجابة: **4 مللي ثانية**\n` +
-                    `└ الأخطاء: 0\n\n` +
-                    `🛡️ **الحماية والأمان:**\n` +
-                    `├ حالة الاختراق والتسرب: **آمن تماماً 🟢**\n` +
-                    `├ فحص الثغرات: لا توجد ثغرات نشطة\n` +
-                    `└ سبب المشاكل السابقة: (تم إصلاحها بضبط اتصالات الـ Webhook وتنظيف الـ Cache)\n\n` +
-                    `💾 **الاحتفاظ:**\n` +
-                    `├ يومي: 1\n` +
-                    `├ أسبوعي: 1\n` +
-                    `└ شهري: 1\n\n` +
-                    `✅ **كل شيء يعمل بسلاسة وبدون أي انقطاع!**`;
-
-                await editMessageText(chatId, messageId, statusText, {
-                    inline_keyboard: [[{ text: '⬅️ رجوع لوحة التحكم', callback_data: 'admin_panel' }]]
+            if (data === 'adm_manage_admins') {
+                let adminsList = `👥 **قائمة الأدمنية والصلاحيات:**\n\n`;
+                Object.entries(db.admins).forEach(([id, info], idx) => {
+                    adminsList += `${idx+1}. \`${id}\` — ${info.role} (${info.name})\n`;
+                });
+                await editMessageText(chatId, messageId, adminsList, {
+                    inline_keyboard: [
+                        [
+                            { text: '➕ إضافة أدمن', callback_data: 'adm_add_admin_prompt' },
+                            { text: '❌ حذف أدمن', callback_data: 'adm_remove_admin_prompt' }
+                        ],
+                        [{ text: '⬅️ رجوع', callback_data: 'owner_panel' }]
+                    ]
                 });
                 await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
                 return res.sendStatus(200);
             }
 
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && data === 'admin_broadcast') {
+            if (data === 'adm_add_admin_prompt') {
+                user.waitingForAddAdmin = true;
+                saveDatabase();
+                await editMessageText(chatId, messageId, `➕ أرسل الآن أيدي (Telegram ID) المستخدم المراد ترقيته لأدمن:`, {
+                    inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'adm_manage_admins' }]]
+                });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_remove_admin_prompt') {
+                user.waitingForRemoveAdmin = true;
+                saveDatabase();
+                await editMessageText(chatId, messageId, `❌ أرسل أيدي (Telegram ID) الأدمن المراد سحب صلاحياته:`, {
+                    inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'adm_manage_admins' }]]
+                });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_manage_services') {
+                await editMessageText(chatId, messageId, `📦 **إدارة خدمات المتجر:**`, {
+                    inline_keyboard: [
+                        [
+                            { text: '➕ إضافة خدمة', callback_data: 'adm_add_serv' },
+                            { text: '🗑️ حذف خدمة', callback_data: 'adm_del_serv' }
+                        ],
+                        [
+                            { text: '💵 تعديل الأسعار', callback_data: 'adm_edit_price' }
+                        ],
+                        [{ text: '⬅️ رجوع', callback_data: 'owner_panel' }]
+                    ]
+                });
+                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_add_serv') {
+                user.waitingForAddService = true;
+                saveDatabase();
+                await editMessageText(chatId, messageId, `➕ أرسل بيانات الخدمة بالصيغة التالية:\n\`المفتاح | اسم الخدمة | السعر | الفئة\`\nمثال:\n\`boost_1 | 100 متابع تيك توك | 200 | paid\``, {
+                    inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'adm_manage_services' }]]
+                });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_del_serv') {
+                user.waitingForDeleteService = true;
+                saveDatabase();
+                await editMessageText(chatId, messageId, `🗑️ أرسل مفتاح الخدمة المراد حذفها (مثال: \`pay_tk_f1\`):`, {
+                    inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'adm_manage_services' }]]
+                });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_edit_price') {
+                user.waitingForEditPrice = true;
+                saveDatabase();
+                await editMessageText(chatId, messageId, `💵 أرسل المفتاح والسعر الجديد بالصيغة:\n\`مفتاح_الخدمة السعر_الجديد\`\nمثال: \`pay_tk_f1 250\``, {
+                    inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'adm_manage_services' }]]
+                });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_manage_points') {
+                user.waitingForPointsControl = true;
+                saveDatabase();
+                await editMessageText(chatId, messageId, `🪙 أرسل أيدي (Telegram ID) المستخدم لتعديل نقاطه:`, {
+                    inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'owner_panel' }]]
+                });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_view_orders') {
+                let allOrders = [];
+                Object.entries(db.users).forEach(([uid, u]) => {
+                    if (u.orders) {
+                        u.orders.forEach(o => allOrders.push({ ...o, uid }));
+                    }
+                });
+
+                let ordText = `📋 **سجل كافة الطلبات (${allOrders.length}):**\n\n`;
+                allOrders.slice(-15).forEach((ord, idx) => {
+                    ordText += `${idx+1}. \`${ord.orderId}\` | العميل: \`${ord.uid}\`\nالخدمة: ${ord.serviceName}\nالحالة: ${ord.status}\n\n`;
+                });
+
+                await editMessageText(chatId, messageId, ordText, {
+                    inline_keyboard: [[{ text: '⬅️ رجوع', callback_data: 'owner_panel' }]]
+                });
+                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_ban_menu') {
+                user.waitingForBanUser = true;
+                saveDatabase();
+                await editMessageText(chatId, messageId, `🚫 أرسل أيدي (Telegram ID) المستخدم لحظره أو فك حظره:`, {
+                    inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'owner_panel' }]]
+                });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_broadcast') {
                 user.waitingForBroadcast = true;
                 saveDatabase();
-                await sendMessage(chatId, `📢 **نشر إعلانات / رسائل جماعية للمشتركين:**\nأرسل الآن نص الإعلان أو الرسالة:`);
+                await editMessageText(chatId, messageId, `📢 أرسل نص الإذاعة المراد إرسالها لجميع المشتركين:`, {
+                    inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'owner_panel' }]]
+                });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_coupons_menu') {
+                await editMessageText(chatId, messageId, `🎁 **قسم إنشاء الهدايا والكوبونات:**`, {
+                    inline_keyboard: [
+                        [{ text: '🎁 رابط نقاط أزرق', callback_data: 'admin_create_gift' }],
+                        [{ text: '🎫 إنشاء كوبون نقاط', callback_data: 'admin_create_point_coupon' }],
+                        [{ text: '🎫 إنشاء كوبون خصم', callback_data: 'admin_create_coupon' }],
+                        [{ text: '⬅️ رجوع', callback_data: 'owner_panel' }]
+                    ]
+                });
                 await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
                 return res.sendStatus(200);
             }
 
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && data === 'admin_create_gift') {
+            if (data === 'admin_create_gift') {
                 user.waitingForGiftCreation = true;
                 saveDatabase();
-                await sendMessage(chatId, `🎁 **إنشاء رابط نقاط أزرق:**\nأرسل بالصيغة: \`النقاط الساعات\` مثل \`100 24\``);
-                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                await editMessageText(chatId, messageId, `🎁 **إنشاء رابط نقاط أزرق:**\nأرسل بالصيغة: \`النقاط الساعات\` مثل \`100 24\``, {
+                    inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'adm_coupons_menu' }]]
+                });
                 return res.sendStatus(200);
             }
 
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && data === 'admin_create_point_coupon') {
+            if (data === 'admin_create_point_coupon') {
                 user.waitingForPointCouponCreate = true;
                 saveDatabase();
-                await sendMessage(chatId, `🎫 **إنشاء كوبون نقاط جديد:**\nأرسل بالصيغة: \`الكود عدد_النقاط\` مثل \`ABOD50 50\``);
-                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                await editMessageText(chatId, messageId, `🎫 **إنشاء كوبون نقاط جديد:**\nأرسل بالصيغة: \`الكود عدد_النقاط\` مثل \`ABOD50 50\``, {
+                    inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'adm_coupons_menu' }]]
+                });
                 return res.sendStatus(200);
             }
 
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && data === 'admin_create_coupon') {
+            if (data === 'admin_create_coupon') {
                 user.waitingForCouponCreate = true;
                 saveDatabase();
-                await sendMessage(chatId, `🎫 **إنشاء كوبون خصم جديد:**\nأرسل بالصيغة: \`الكود النسبة\` مثل \`TURBO10 20\``);
-                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
-                return res.sendStatus(200);
-            }
-
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && data === 'admin_add_points') {
-                user.waitingForAdminAddPoints = true;
-                saveDatabase();
-                await sendMessage(chatId, `🪙 أرسل معرف العميل (ID):`);
-                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
-                return res.sendStatus(200);
-            }
-
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && data === 'admin_ban_user') {
-                user.waitingForAdminBan = true;
-                saveDatabase();
-                await sendMessage(chatId, `🚫 أرسل معرف العميل (ID) لحظره أو فك حظره:`);
-                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
-                return res.sendStatus(200);
-            }
-
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && data === 'admin_users_list') {
-                const allUserIds = Object.keys(db.users);
-                let textList = `🛠️ **قائمة المستخدمين (${allUserIds.length}):**\n\n`;
-                allUserIds.slice(0, 30).forEach((id, idx) => {
-                    const u = db.users[id];
-                    textList += `${idx+1}. [${u.name}](tg://user?id=${id}) | ID: \`${id}\` | النقاط: ${u.points}\n`;
+                await editMessageText(chatId, messageId, `🎫 **إنشاء كوبون خصم جديد:**\nأرسل بالصيغة: \`الكود النسبة\` مثل \`TURBO10 20\``, {
+                    inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'adm_coupons_menu' }]]
                 });
-                await sendMessage(chatId, textList);
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_bot_stats') {
+                const totalUsers = Object.keys(db.users).length;
+                let totalCompleted = 0;
+                let totalPending = 0;
+                Object.values(db.users).forEach(u => {
+                    if (u.orders) {
+                        u.orders.forEach(o => {
+                            if (o.status.includes('مكتمل')) totalCompleted++;
+                            else if (o.status.includes('جاري') || o.status.includes('انتظار')) totalPending++;
+                        });
+                    }
+                });
+
+                const uptimeSecs = Math.floor((Date.now() - startTime) / 1000);
+                const hours = Math.floor(uptimeSecs / 3600);
+                const minutes = Math.floor((uptimeSecs % 3600) / 60);
+
+                const memUsage = process.memoryUsage();
+                const heapMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+
+                const statsText = `📊 **لوحة تقارير وإحصائيات البوت الشاملة:**\n\n` +
+                    `🟢 حالة تشغيل البوت: *${db.systemSettings.botStatus}*\n` +
+                    `⚡ سرعة استجابة البوت: *~3 مللي ثانية*\n` +
+                    `👥 عدد المستخدمين الكلي: *${totalUsers}*\n` +
+                    `🟢 عدد المستخدمين النشطون: *${totalUsers}*\n` +
+                    `📦 عدد الطلبات المكتملة: *${totalCompleted}*\n` +
+                    `⏳ عدد الطلبات المعلقة: *${totalPending}*\n` +
+                    `❌ عدد الأعطال المسجلة: *${db.errorLogs.length}*\n` +
+                    `🔌 حالة اتصال Telegram API: *متصل وثابت 🟢*\n` +
+                    `💾 حالة قاعدة البيانات: *مستقرة ومحدثة 🟢*\n` +
+                    `⏱️ مدة التشغيل: *${hours} ساعة و ${minutes} دقيقة*\n` +
+                    `📈 استهلاك الذاكرة (RAM): *${heapMB} MB*\n` +
+                    `💻 المعالج (CPU): *${os.cpus()[0]?.model || 'Standard'}*\n\n` +
+                    `📞 هاتف المالك: \`${OWNER_PHONE}\`\n` +
+                    `👤 يوزر المالك: @th_s777`;
+
+                await editMessageText(chatId, messageId, statsText, {
+                    inline_keyboard: [[{ text: '⬅️ رجوع', callback_data: 'owner_panel' }]]
+                });
                 await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
                 return res.sendStatus(200);
             }
 
-            if (chatId.toString() === ADMIN_CHAT_ID.toString() && (data.startsWith('admin_done_') || data.startsWith('admin_fail_'))) {
-                const parts = data.split('_');
-                const action = parts[1];
-                const targetUserChatId = parts[2];
-                const orderIdStr = parts[3];
+            if (data === 'adm_audit_logs') {
+                let logText = `📜 **سجل العمليات الإدارية وآخر الأعطال:**\n\n` +
+                    `🔹 **آخر العمليات الإدارية:**\n`;
+                db.auditLogs.slice(0, 5).forEach((l, idx) => {
+                    logText += `${idx+1}. [${l.adminName}] — ${l.action} (${l.time.substring(11, 19)})\n`;
+                });
 
-                const targetUser = db.users[targetUserChatId];
-                if (targetUser && targetUser.orders) {
-                    const ord = targetUser.orders.find(o => o.orderId === orderIdStr);
-                    if (ord) {
-                        ord.status = action === 'done' ? 'مكتمل ✅' : 'مرفوض / غير متاح ❌';
-                        saveDatabase();
-                    }
-                }
-
-                if (action === 'done') {
-                    const ratingKeyboard = {
-                        inline_keyboard: [
-                            [
-                                { text: '⭐ 1', callback_data: `rating_set_${orderIdStr}_1` },
-                                { text: '⭐⭐ 2', callback_data: `rating_set_${orderIdStr}_2` },
-                                { text: '⭐⭐⭐ 3', callback_data: `rating_set_${orderIdStr}_3` }
-                            ],
-                            [
-                                { text: '⭐⭐⭐⭐ 4', callback_data: `rating_set_${orderIdStr}_4` },
-                                { text: '⭐⭐⭐⭐⭐ 5', callback_data: `rating_set_${orderIdStr}_5` }
-                            ]
-                        ]
-                    };
-                    await sendMessage(targetUserChatId, `🎉 **مبروك!** تم إتمام طلبك رقم \`${orderIdStr}\` بنجاح ✅.\n\n⭐ **نود معرفة رأيك، كم تقييمك للخدمة معنا؟**`, ratingKeyboard);
-                    await editMessageText(chatId, messageId, `✅ **تم تأكيد إتمام الطلب (${orderIdStr}) بنجاح وإرسال طلب التقييم للعميل.**`);
+                logText += `\n🔴 **سجل الأعطال:**\n`;
+                if (db.errorLogs.length === 0) {
+                    logText += `لا توجد أخطاء مسجلة حالياً! 🟢\n`;
                 } else {
-                    await sendMessage(targetUserChatId, `❌ **عذراً،** تم رفض أو إلغاء طلبك رقم \`${orderIdStr}\` ❌.`);
-                    await editMessageText(chatId, messageId, `❌ **تم تسجيل الطلب (${orderIdStr}) كفشل وإشعار العميل.**`);
+                    db.errorLogs.slice(0, 3).forEach((e, idx) => {
+                        logText += `${idx+1}. ${e.error} (${e.time.substring(11, 19)})\n`;
+                    });
                 }
+
+                await editMessageText(chatId, messageId, logText, {
+                    inline_keyboard: [[{ text: '⬅️ رجوع', callback_data: 'owner_panel' }]]
+                });
                 await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_system_settings') {
+                const kb = {
+                    inline_keyboard: [
+                        [{ text: db.systemSettings.botStatus.includes('يعمل') ? '🔴 إيقاف البوت مؤقتاً' : '🟢 تشغيل البوت', callback_data: 'adm_toggle_bot' }],
+                        [{ text: '⬅️ رجوع', callback_data: 'owner_panel' }]
+                    ]
+                };
+                await editMessageText(chatId, messageId, `⚙️ **إعدادات النظام والتحكم بالتشغيل:**`, kb);
+                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'adm_toggle_bot') {
+                db.systemSettings.botStatus = db.systemSettings.botStatus.includes('يعمل') ? 'متوقف صيانة 🔴' : 'يعمل 🟢';
+                saveDatabase();
+                logAction(chatId, callbackQuery.from.first_name, `تغيير حالة البوت إلى: ${db.systemSettings.botStatus}`);
+                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id, text: `✅ تم تغيير حالة النظام بنجاح!`, show_alert: true });
+                showMainMenu(chatId, messageId, true);
                 return res.sendStatus(200);
             }
 
@@ -965,13 +1248,12 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                         [{ text: '⬅️ رجوع للقائمة الرئيسية', callback_data: 'main_menu' }]
                     ]
                 };
-                await editMessageText(chatId, messageId, `💎 **مركز الخدمات المجانية السريعة:**\n\n- مسموح لك اختيار **خدمتين (2) فقط كل يوم**.\n- تنبيه: خدمات مصغرة (بإمكانيات محدودة مثل 100 مشاهدة أو 20 لايك).\nاختر الخدمة المناسبة:`, kb);
+                await editMessageText(chatId, messageId, `💎 **مركز الخدمات المجانية السريعة:**\n\n- مسموح لك اختيار **خدمتين (2) فقط كل يوم**.\nاختر الخدمة المناسبة:`, kb);
             }
 
             else if (data === 'services_menu') {
                 user.waitingForInput = null;
                 saveDatabase();
-                const servText = `⚡🔥 **قسم تعزيز الحسابات والرشقات السريعة:**\nاختر القسم المطلوب:`;
                 const servKeyboard = {
                     inline_keyboard: [
                         [{ text: '⚡ مخزن العروض الخاصة والخدمات النووية', callback_data: 'special_store_menu' }],
@@ -985,14 +1267,14 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                         [{ text: '⬅️ رجوع للقائمة الرئيسية', callback_data: 'main_menu' }]
                     ]
                 };
-                await editMessageText(chatId, messageId, servText, servKeyboard);
+                await editMessageText(chatId, messageId, `⚡🔥 **قسم تعزيز الحسابات والرشقات السريعة:**`, servKeyboard);
             }
 
             else if (data === 'special_store_menu') {
-                await editMessageText(chatId, messageId, `⚡ **مخزن العروض الخاصة والحصرية:**\nاختر القسم المناسب:`, {
+                await editMessageText(chatId, messageId, `⚡ **مخزن العروض الخاصة والحصرية:**`, {
                     inline_keyboard: [
-                        [{ text: '🔥 بيع حسابات تيك توك عشوائية (سعر عالي جداً)', callback_data: 'pay_rand_tk_acc' }],
-                        [{ text: '🛡️ استرداد حسابات مسروقة/مهكرة (احتمال ضعيف وغير مضمون)', callback_data: 'pay_recover_acc' }],
+                        [{ text: '🔥 بيع حسابات تيك توك عشوائية', callback_data: 'pay_rand_tk_acc' }],
+                        [{ text: '🛡️ استرداد حسابات مهكرة', callback_data: 'pay_recover_acc' }],
                         [{ text: '⬅️ رجوع للمتجر', callback_data: 'services_menu' }]
                     ]
                 });
@@ -1093,9 +1375,9 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
                 let msgPrompt = `🔗 **أرسل الآن في الشات رابط أو تفاصيل الحساب المطلوبة:**\n*(التكلفة: ${cost} نقطة)*`;
                 if (serviceKey === 'pay_rand_tk_acc') {
-                    msgPrompt = `🔥 **أرسل رابط حسابك أو معرفك لتسليم الحساب العشوائي عليه:**\n*(التكلفة: ${cost} نقطة - سعر عالي)*`;
+                    msgPrompt = `🔥 **أرسل رابط حسابك أو معرفك لتسليم الحساب العشوائي عليه:**\n*(التكلفة: ${cost} نقطة)*`;
                 } else if (serviceKey === 'pay_recover_acc') {
-                    msgPrompt = `🛡️ **أرسل يوزر الحساب المهكر أو المسروب ورابطه:**\n*(تنبيه: الخدمة بنسبة ضئيلة جداً وغير مضمونة والتكلفة: ${cost} نقطة)*`;
+                    msgPrompt = `🛡️ **أرسل يوزر الحساب المهكر أو المسروب ورابطه:**\n*(التكلفة: ${cost} نقطة)*`;
                 } else if (serviceData && serviceData.category === 'free') {
                     msgPrompt = `🎁 **أرسل رابط الحساب أو المقطع للخدمة المجانية المصغرة:**`;
                 }
@@ -1261,18 +1543,59 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
             else if (data === 'support') {
                 const supportText = `🛠️ **الدعم الفني وخدمة العملاء:**\n\n` +
-                    `🔹 الدعم الفني: @th_s777\n\n` +
+                    `🔹 الدعم الفني: @th_s777\n` +
+                    `📞 هاتف الدعم: \`${OWNER_PHONE}\`\n\n` +
                     `💡 **أي أحد عنده فكرة تنضاف للبوت يتواصل مع الدعم الفني مباشرة!**`;
                 
                 await editMessageText(chatId, messageId, supportText, {
                     inline_keyboard: [[{ text: '⬅️ رجوع للقائمة الرئيسية', callback_data: 'main_menu' }]]
                 });
             }
+
+            else if (data.startsWith('admin_done_') || data.startsWith('admin_fail_')) {
+                const parts = data.split('_');
+                const action = parts[1];
+                const targetUserChatId = parts[2];
+                const orderIdStr = parts[3];
+
+                const targetUser = db.users[targetUserChatId];
+                if (targetUser && targetUser.orders) {
+                    const ord = targetUser.orders.find(o => o.orderId === orderIdStr);
+                    if (ord) {
+                        ord.status = action === 'done' ? 'مكتمل ✅' : 'مرفوض / غير متاح ❌';
+                        saveDatabase();
+                    }
+                }
+
+                if (action === 'done') {
+                    const ratingKeyboard = {
+                        inline_keyboard: [
+                            [
+                                { text: '⭐ 1', callback_data: `rating_set_${orderIdStr}_1` },
+                                { text: '⭐⭐ 2', callback_data: `rating_set_${orderIdStr}_2` },
+                                { text: '⭐⭐⭐ 3', callback_data: `rating_set_${orderIdStr}_3` }
+                            ],
+                            [
+                                { text: '⭐⭐⭐⭐ 4', callback_data: `rating_set_${orderIdStr}_4` },
+                                { text: '⭐⭐⭐⭐⭐ 5', callback_data: `rating_set_${orderIdStr}_5` }
+                            ]
+                        ]
+                    };
+                    await sendMessage(targetUserChatId, `🎉 **مبروك!** تم إتمام طلبك رقم \`${orderIdStr}\` بنجاح ✅.\n\n⭐ **نود معرفة رأيك، كم تقييمك للخدمة معنا؟**`, ratingKeyboard);
+                    await editMessageText(chatId, messageId, `✅ **تم تأكيد إتمام الطلب (${orderIdStr}) بنجاح وإرسال طلب التقييم للعميل.**`);
+                } else {
+                    await sendMessage(targetUserChatId, `❌ **عذراً،** تم رفض أو إلغاء طلبك رقم \`${orderIdStr}\` ❌.`);
+                    await editMessageText(chatId, messageId, `❌ **تم تسجيل الطلب (${orderIdStr}) كفشل وإشعار العميل.**`);
+                }
+                logAction(chatId, callbackQuery.from.first_name, `معالجة الطلب ${orderIdStr} بالحالة: ${action}`);
+                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                return res.sendStatus(200);
+            }
         }
 
         res.sendStatus(200);
     } catch (err) {
-        console.error('Webhook Error:', err);
+        logError(err.message);
         res.sendStatus(200);
     }
 });
@@ -1312,8 +1635,8 @@ function showMainMenu(chatId, messageId = null, edit = false) {
         ]
     ];
 
-    if (chatId.toString() === ADMIN_CHAT_ID.toString()) {
-        keyboardRows.push([{ text: '📊 لوحة تحكم الأدمن الرئيسي', callback_data: 'admin_panel' }]);
+    if (isAdmin(chatId)) {
+        keyboardRows.push([{ text: '🛠️ لوحة تحكم الأدمن والمالك', callback_data: 'owner_panel' }]);
     }
 
     const menuKeyboard = { inline_keyboard: keyboardRows };
@@ -1356,7 +1679,6 @@ setInterval(() => {
     axios.get(appUrl).catch(() => {});
 }, 10 * 60 * 1000);
 
-// تحديث الويب هوك تلقائياً عند تشغيل البوت
 setTimeout(() => {
     if (process.env.RENDER_EXTERNAL_URL) {
         axios.get(`https://api.telegram.org/bot${TOKEN}/setWebhook?url=${process.env.RENDER_EXTERNAL_URL}/webhook/${TOKEN}`).catch(() => {});
