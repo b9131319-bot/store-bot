@@ -11,7 +11,7 @@ const TOKEN = '8455445401:AAFt_f55qgdRLJvrZ5KfEjX3IXVsjaDnxFs';
 const ADMIN_CHAT_ID = '8266396167'; // الأدمن الأساسي الوحيد
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const BOT_USERNAME = 'abod_store_bot'; 
+const BOT_USERNAME = 'th_s777'; 
 
 const DB_FILE = path.join(__dirname, 'database.json');
 
