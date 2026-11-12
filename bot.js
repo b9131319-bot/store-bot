@@ -1017,8 +1017,8 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     `⏱️ مدة التشغيل: *${hours} ساعة و ${minutes} دقيقة*\n` +
                     `📈 استهلاك الذاكرة (RAM): *${heapMB} MB*\n` +
                     `💻 المعالج (CPU): *${os.cpus()[0]?.model || 'Standard'}*\n\n` +
-                    `📞 هاتف الرئيس: \`${OWNER_PHONE}\`\n` +
-                    `👤 يوزر الرئيس: @${OWNER_USERNAME}`;
+                    `📞 هاتف الرئيس: \`${0599854946}\`\n` +
+                    `👤 يوزر الرئيس: @${abod097644}`;
 
                 await editMessageText(chatId, messageId, statsText, {
                     inline_keyboard: [[{ text: '⬅️ رجوع', callback_data: 'owner_panel' }]]
