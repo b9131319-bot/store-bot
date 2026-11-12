@@ -21,7 +21,7 @@ const startTime = Date.now();
 let db = {
     users: {},
     admins: {
-        [OWNER_CHAT_ID]: { role: 'owner', name: 'المالك الرئيسي', addedBy: 'System' }
+        [OWNER_CHAT_ID]: { role: 'owner', name: 'المالك الرئيسي (@th_s777)', addedBy: 'System' }
     },
     giftCodes: {},
     coupons: {},
@@ -64,7 +64,7 @@ let db = {
         'pay_store_create': { name: 'خدمة إنشاء متجر متكامل', price: 2000, category: 'paid' },
 
         'pay_rand_tk_acc': { name: 'حساب تيك توك عشوائي فاخر (نادر جداً)', price: 5000, category: 'special' },
-        'pay_recover_acc': { name: 'خدمة استرداد حساب مسروق/مهكر (احتمال ضعيف وغير مضمون)', price: 3500, category: 'special' },
+        'pay_recover_acc': { name: 'خدمة استرداد حساب مسروق/مهكر', price: 3500, category: 'special' },
 
         'free_service_1': { name: 'مجاني: 100 مشاهدة تيك توك مصغرة', price: 0, category: 'free' },
         'free_service_2': { name: 'مجاني: 20 لايك انستقرام مصغر', price: 0, category: 'free' },
@@ -86,7 +86,7 @@ function loadDatabase() {
             const data = fs.readFileSync(DB_FILE, 'utf8');
             const parsed = JSON.parse(data);
             db.users = parsed.users || {};
-            db.admins = parsed.admins || { [OWNER_CHAT_ID]: { role: 'owner', name: 'المالك الرئيسي', addedBy: 'System' }};
+            db.admins = parsed.admins || { [OWNER_CHAT_ID]: { role: 'owner', name: 'المالك الرئيسي (@th_s777)', addedBy: 'System' }};
             db.giftCodes = parsed.giftCodes || {};
             db.coupons = parsed.coupons || {};
             db.pointCoupons = parsed.pointCoupons || {};
@@ -115,7 +115,7 @@ loadDatabase();
 function logAction(adminId, adminName, actionDesc) {
     const logEntry = {
         time: new Date().toISOString(),
-        adminId: adminId,
+        adminId: adminId.toString(),
         adminName: adminName,
         action: actionDesc
     };
@@ -155,7 +155,7 @@ async function editMessageText(chatId, messageId, text, replyMarkup = null) {
 }
 
 function isAdmin(chatId) {
-    return db.admins[chatId] !== undefined;
+    return db.admins[chatId.toString()] !== undefined;
 }
 
 function isOwner(chatId) {
@@ -178,7 +178,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const update = req.body;
 
         if (update.message) {
-            const chatId = update.message.chat.id;
+            const chatId = update.message.chat.id.toString();
             const text = update.message.text;
             const userName = update.message.from.first_name || 'مستخدم';
             const userUsername = update.message.from.username ? `@${update.message.from.username}` : 'لا يوجد';
@@ -236,7 +236,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // استقبال المدخلات الإدارية مع التحقق التام من الصلاحيات والأيدي
+            // استقبال المدخلات الإدارية مع التحقق التام والصارم من Telegram ID والأمان
             if (isAdmin(chatId)) {
                 const adminName = userName;
 
@@ -248,7 +248,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                         await sendMessage(chatId, `❌ الأيدي غير صحيح.`);
                         return res.sendStatus(200);
                     }
-                    db.admins[targetId] = { role: 'admin', name: 'أدمن', addedBy: adminName };
+                    db.admins[targetId] = { role: 'admin', name: 'أدمن', addedBy: `${adminName} (${chatId})` };
                     saveDatabase();
                     logAction(chatId, adminName, `إضافة أدمن جديد برقم الأيدي: ${targetId}`);
                     await sendMessage(chatId, `✅ تم تعيين المستخدم \`${targetId}\` كأدمن بنجاح.`);
@@ -260,7 +260,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     saveDatabase();
                     const targetId = text.trim();
                     if (targetId === OWNER_CHAT_ID.toString()) {
-                        await sendMessage(chatId, `❌ لا يمكن حذف المالك الرئيسي من قائمة الأدمنية.`);
+                        await sendMessage(chatId, `❌ لا يمكن حذف المالك الرئيسي من قائمة الأدمنية نهائياً!`);
                         return res.sendStatus(200);
                     }
                     if (db.admins[targetId]) {
@@ -526,7 +526,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     const param = args[1];
                     if (param.startsWith('ref_')) {
                         const referrerId = param.replace('ref_', '');
-                        if (referrerId !== chatId.toString() && db.users[referrerId] && !user.referredBy) {
+                        if (referrerId !== chatId && db.users[referrerId] && !user.referredBy) {
                             user.referredBy = referrerId;
                             db.users[referrerId].referralCount = (db.users[referrerId].referralCount || 0) + 1;
                             db.users[referrerId].points += 10;
@@ -553,7 +553,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
             if (user.waitingForTransferId) {
                 const targetId = text.trim();
-                if (targetId === chatId.toString()) {
+                if (targetId === chatId) {
                     user.waitingForTransferId = null;
                     saveDatabase();
                     await sendMessage(chatId, `❌ لا يمكنك تحويل النقاط لنفسك.`);
@@ -589,7 +589,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 user.weeklyTransfers = user.weeklyTransfers.filter(t => now - t < oneWeek);
 
                 if (user.weeklyTransfers.length >= 2) {
-                    await sendMessage(chatId, `⚠️ **عذراً، لقد استنفدت الحد الأقص للتحويل (مرتين أسبوعياً).**`);
+                    await sendMessage(chatId, `⚠️ **عذراً، لقد استنفدت الحد الأقصى للتحويل (مرتين أسبوعياً).**`);
                     return res.sendStatus(200);
                 }
 
@@ -728,9 +728,10 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     user.lastOrder = orderId;
                     saveDatabase();
 
+                    // قسم الدعم الفني المباشر والجاهز والمضبوط 100%
                     const supportMsg = `🔔 **تم قبول طلبك برقم:** \`${orderId}\`\n\n` +
                         `🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً عبر اليوزر التالي لإتمام طلبك:\n` +
-                        `👤 الدعم الفني: @th_s777\n` +
+                        `👤 الدعم الفني: @${BOT_USERNAME}\n` +
                         `📞 هاتف الدعم: \`${OWNER_PHONE}\`\n` +
                         `📌 **أرسل لهم رقم طلبك ومشكلتك بالتفصيل ليتم خدمتِك بنجاح!**`;
 
@@ -760,7 +761,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         } 
         else if (update.callback_query) {
             const callbackQuery = update.callback_query;
-            const chatId = callbackQuery.message.chat.id;
+            const chatId = callbackQuery.message.chat.id.toString();
             const messageId = callbackQuery.message.message_id;
             const data = callbackQuery.data;
 
@@ -779,10 +780,10 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // تحقق صارم في الأزرار الإدارية
+            // تحقق صارم وأمني في جميع الأزرار الإدارية
             if (data.startsWith('adm_') || data === 'owner_panel') {
                 if (!isAdmin(chatId)) {
-                    await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id, text: '❌ غير مصرح لك بالوصول!', show_alert: true });
+                    await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id, text: '❌ غير مصرح لك بالوصول إلى لوحة الإدارة!', show_alert: true });
                     return res.sendStatus(200);
                 }
             }
@@ -813,7 +814,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                         [{ text: '⬅️ العودة للقائمة الرئيسية', callback_data: 'main_menu' }]
                     ]
                 };
-                await editMessageText(chatId, messageId, `🛠️ **لوحة التحكم الشاملة (الرئيس فقط):**\nمرحباً بك يا غالي، اختر القسم المطلوب:`, adminKeyboard);
+                await editMessageText(chatId, messageId, `🛠️ **لوحة التحكم الشاملة للرئيس (@th_s777):**\nمرحباً بك يا رئيسنا، اختر القسم المطلوب:`, adminKeyboard);
                 await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
                 return res.sendStatus(200);
             }
@@ -1005,11 +1006,11 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 const memUsage = process.memoryUsage();
                 const heapMB = Math.round(memUsage.heapUsed / 1024 / 1024);
 
-                const statsText = `📊 **لوحة تقارير وإحصائيات البوت الشاملة:**\n\n` +
+                const statsText = `📊 **لوحة تقارير وإحصائيات البوت الشاملة (للرئيس):**\n\n` +
                     `🟢 حالة تشغيل البوت: *${db.systemSettings.botStatus}*\n` +
                     `⚡ سرعة استجابة البوت: *~3 مللي ثانية*\n` +
                     `👥 عدد المستخدمين الكلي: *${totalUsers}*\n` +
-                    `🟢 عدد المستخدمين النشطون: *${totalUsers}*\n` +
+                    `🟢 عدد المستخدمين النشطين: *${totalUsers}*\n` +
                     `📦 عدد الطلبات المكتملة: *${totalCompleted}*\n` +
                     `⏳ عدد الطلبات المعلقة: *${totalPending}*\n` +
                     `❌ عدد الأعطال المسجلة: *${db.errorLogs.length}*\n` +
@@ -1018,8 +1019,8 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     `⏱️ مدة التشغيل: *${hours} ساعة و ${minutes} دقيقة*\n` +
                     `📈 استهلاك الذاكرة (RAM): *${heapMB} MB*\n` +
                     `💻 المعالج (CPU): *${os.cpus()[0]?.model || 'Standard'}*\n\n` +
-                    `📞 هاتف المالك: \`${OWNER_PHONE}\`\n` +
-                    `👤 يوزر المالك: @th_s777`;
+                    `📞 هاتف الرئيس: \`${OWNER_PHONE}\`\n` +
+                    `👤 يوزر الرئيس: @${BOT_USERNAME}`;
 
                 await editMessageText(chatId, messageId, statsText, {
                     inline_keyboard: [[{ text: '⬅️ رجوع', callback_data: 'owner_panel' }]]
@@ -1543,7 +1544,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
             else if (data === 'support') {
                 const supportText = `🛠️ **الدعم الفني وخدمة العملاء:**\n\n` +
-                    `🔹 الدعم الفني: @th_s777\n` +
+                    `🔹 الدعم الفني: @${BOT_USERNAME}\n` +
                     `📞 هاتف الدعم: \`${OWNER_PHONE}\`\n\n` +
                     `💡 **أي أحد عنده فكرة تنضاف للبوت يتواصل مع الدعم الفني مباشرة!**`;
                 
@@ -1662,7 +1663,7 @@ function processOrder(chatId, serviceKey, user) {
     user.lastOrder = orderId;
     saveDatabase();
     
-    sendMessage(chatId, `✅ **تم تأكيد طلبك برقم:** \`${orderId}\`\n\n🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً (@th_s777) وإرسال رقم طلبك ومشكلتك ليتم تنفيذ الخدمة لك.`);
+    sendMessage(chatId, `✅ **تم تأكيد طلبك برقم:** \`${orderId}\`\n\n🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً (@${BOT_USERNAME}) وإرسال رقم طلبك ومشكلتك ليتم تنفيذ الخدمة لك.`);
 }
 
 app.get('/', (req, res) => {
