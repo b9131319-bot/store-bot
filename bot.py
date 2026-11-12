@@ -180,7 +180,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 saveDatabase();
 
                 if (chatId.toString() !== ADMIN_CHAT_ID.toString()) {
-                    const notifyAdminText = `🚨 **عضو جديد دخل البوت!**\n\n` +
+                     notifyAdminText = `🚨 **عضو جديد دخل البوت!**\n\n` +
                         `👤 الاسم: ${userName}\n` +
                         `🔗 المعرف: ${userUsername}\n` +
                         `🆔 الأيدي: \`${chatId}\`\n` +
