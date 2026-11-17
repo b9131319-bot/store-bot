@@ -11,7 +11,7 @@ app.use(bodyParser.json());
 const TOKEN = '8455445401:AAFt_f55qgdRLJvrZ5KfEjX3IXVsjaDnxFs';
 const OWNER_CHAT_ID = '8266396167'; 
 const OWNER_USERNAME = 'abod097644'; 
-const EMPLOYEE_USERNAME = 'FFEKN'; // يوزر الموظف المسؤول عن النشر
+const EMPLOYEE_USERNAME = 'FFEKN'; 
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 const BOT_USERNAME = 'th_s777'; 
@@ -32,7 +32,7 @@ let db = {
     },
     giftCodes: {},
     pointCoupons: {},
-    publisherAds: [], // قسم إدارة نشر البوت والإعلانات
+    publisherAds: [],
     auditLogs: [],
     errorLogs: [],
     systemSettings: {
@@ -40,21 +40,21 @@ let db = {
         maintenanceMode: false
     },
     services: {
-        'pay_tk_f1': { name: '✨ متابعين تيك توك VIP', price: 300, category: 'paid', min: 100, max: 10000 },
-        'pay_tk_v1': { name: '🔥 مشاهدات وتفاعلات تيك توك', price: 250, category: 'paid', min: 100, max: 10000 },
-        'pay_yt_f1': { name: '📺 مشتركين يوتيوب حقيقي', price: 350, category: 'paid', min: 100, max: 5000 },
-        'pay_yt_v1': { name: '📺 مشاهدات يوتيوب سريعة', price: 300, category: 'paid', min: 100, max: 10000 },
-        'pay_in_f1': { name: '📸 متابعين انستقرام تفاعل عالي', price: 320, category: 'paid', min: 100, max: 5000 },
-        'pay_in_v1': { name: '📸 مشاهدات انستقرام', price: 280, category: 'paid', min: 100, max: 10000 },
-        'pay_tw_f1': { name: '💜 متابعين تويتش نشطين', price: 300, category: 'paid', min: 100, max: 2000 },
-        'pay_tw_v1': { name: '💜 مشاهدات بث تويتش', price: 400, category: 'paid', min: 100, max: 500 },
-        'pay_tg_f1': { name: '✈️ متابعين وقنوات تيليجرام', price: 300, category: 'paid', min: 100, max: 10000 },
-        'pay_tg_v1': { name: '✈️ مشاهدات منشورات تيليجرام', price: 250, category: 'paid', min: 100, max: 10000 },
-        'pay_x_f1': { name: '✖️ متابعين منصة X الملكي', price: 320, category: 'paid', min: 100, max: 5000 },
-        'pay_x_v1': { name: '✖️ تفاعلات منصة X', price: 280, category: 'paid', min: 100, max: 1000 },
-        'pay_store_create': { name: '🛒 خدمة إنشاء متجر متكامل', price: 3500, category: 'paid', min: 1, max: 1 },
-        'pay_rand_tk_acc': { name: '👑 حساب تيك توك عشوائي فاخر', price: 7500, category: 'special', min: 1, max: 1 },
-        'pay_recover_acc': { name: '🛡️ خدمة استرداد حساب مسروق/مهكر', price: 5500, category: 'special', min: 1, max: 1 },
+        'pay_tk_f1': { name: '✨ متابعين تيك توك VIP', price: 2500, category: 'paid', min: 100, max: 10000 },
+        'pay_tk_v1': { name: '🔥 مشاهدات وتفاعلات تيك توك', price: 1800, category: 'paid', min: 100, max: 10000 },
+        'pay_yt_f1': { name: '📺 مشتركين يوتيوب حقيقي', price: 3000, category: 'paid', min: 100, max: 5000 },
+        'pay_yt_v1': { name: '📺 مشاهدات يوتيوب سريعة', price: 2200, category: 'paid', min: 100, max: 10000 },
+        'pay_in_f1': { name: '📸 متابعين انستقرام تفاعل عالي', price: 2800, category: 'paid', min: 100, max: 5000 },
+        'pay_in_v1': { name: '📸 مشاهدات انستقرام', price: 1900, category: 'paid', min: 100, max: 10000 },
+        'pay_tw_f1': { name: '💜 متابعين تويتش نشطين', price: 2600, category: 'paid', min: 100, max: 2000 },
+        'pay_tw_v1': { name: '💜 مشاهدات بث تويتش', price: 3500, category: 'paid', min: 100, max: 500 },
+        'pay_tg_f1': { name: '✈️ متابعين وقنوات تيليجرام', price: 2500, category: 'paid', min: 100, max: 10000 },
+        'pay_tg_v1': { name: '✈️ مشاهدات منشورات تيليجرام', price: 1700, category: 'paid', min: 100, max: 10000 },
+        'pay_x_f1': { name: '✖️ متابعين منصة X الملكي', price: 2900, category: 'paid', min: 100, max: 5000 },
+        'pay_x_v1': { name: '✖️ تفاعلات منصة X', price: 2000, category: 'paid', min: 100, max: 1000 },
+        'pay_store_create': { name: '🛒 خدمة إنشاء متجر متكامل', price: 15000, category: 'paid', min: 1, max: 1 },
+        'pay_rand_tk_acc': { name: '👑 حساب تيك توك عشوائي فاخر', price: 25000, category: 'special', min: 1, max: 1 },
+        'pay_recover_acc': { name: '🛡️ خدمة استرداد حساب مسروق/مهكر', price: 20000, category: 'special', min: 1, max: 1 },
         'free_service_1': { name: '🎁 مجاني: 100 مشاهدة تيك توك مصغرة', price: 0, category: 'free', min: 100, max: 1000 },
         'free_service_2': { name: '🎁 مجاني: 20 لايك انستقرام مصغر', price: 0, category: 'free', min: 20, max: 500 }
     }
@@ -263,14 +263,12 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // فحص إذا كان الداخل هو الموظف المسؤول عن النشر @FFEKN
             if (cleanUsername === EMPLOYEE_USERNAME && text && text.startsWith('/start')) {
                 await sendMessage(chatId, `✨ **منور البوت يا الأدمن!**\n👤 اسم المستخدم المعتمد: @${EMPLOYEE_USERNAME}`);
                 showPublisherMenu(chatId);
                 return res.sendStatus(200);
             }
 
-            // استقبال محتوى الإعلان الجديد من الموظف
             if (user.waitingForAdCreation) {
                 user.waitingForAdCreation = false;
                 saveDatabase();
@@ -287,7 +285,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
                 await sendMessage(chatId, `✅ **تم إرسال إعلانك بنجاح إلى الإدارة للمراجعة!**\n🆔 رقم الإعلان: \`${adId}\``);
 
-                // إرسال إشعار للرئيس للموافقة على الإعلان الجماعي
                 const ownerAdMsg = `📢 **طلب موافقة على نشر إعلان جماعي جديد!**\n\n` +
                     `👤 الموظف: @${EMPLOYEE_USERNAME} (\`${chatId}\`)\n` +
                     `🆔 رقم الإعلان: \`${adId}\`\n\n` +
@@ -305,7 +302,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // استقبال اقتراح الحملة التسويقية
             if (user.waitingForAdSuggestion) {
                 user.waitingForAdSuggestion = false;
                 saveDatabase();
@@ -530,7 +526,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 user.weeklyTransfers = user.weeklyTransfers.filter(t => now - t < oneWeek);
 
                 if (user.weeklyTransfers.length >= 2) {
-                    await sendMessage(chatId, `⚠️ **عذراً، لقد استنفدت الحد الأقص للتحويل (مرتين أسبوعياً).**`);
+                    await sendMessage(chatId, `⚠️ **عذراً، لقد استنفدت الحد الأقصى للتحويل (مرتين أسبوعياً).**`);
                     return res.sendStatus(200);
                 }
 
@@ -601,7 +597,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
                     const targetInput = text;
                     const serviceData = db.services[pendingService];
-                    let basePrice = serviceData ? serviceData.price : 300;
+                    let basePrice = serviceData ? serviceData.price : 2500;
                     let cost = Math.round((basePrice / 1000) * orderInfo.quantity);
                     if (cost < 1) cost = basePrice; 
 
@@ -725,7 +721,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // --- أزرار وتحكم قسم إدارة نشر البوت للموظف @FFEKN ---
             if (data === 'publisher_panel') {
                 if (!isPublisherEmployee(cbUsername, chatId)) {
                     await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id, text: '❌ هذا القسم مخصص لمسؤول النشر فقط!', show_alert: true });
@@ -809,7 +804,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // موافقة الرئيس على الإعلان الجماعي ونشره للمشتركين
             if (data.startsWith('approve_ad_') || data.startsWith('reject_ad_')) {
                 if (!isAdmin(chatId)) return res.sendStatus(200);
                 const isApprove = data.startsWith('approve_ad_');
@@ -822,7 +816,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 }
 
                 if (isApprove && adObj) {
-                    // بث الإعلان لجميع المشتركين
                     const allUsers = Object.keys(db.users);
                     let sentCount = 0;
                     for (const uid of allUsers) {
@@ -842,7 +835,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
                 return res.sendStatus(200);
             }
-            // ----------------------------------------------------
 
             if (data === 'bot_stats_public') {
                 if (!isAdmin(chatId)) {
@@ -996,7 +988,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
             if (data === 'adm_add_serv') {
                 user.waitingForAddService = true;
                 saveDatabase();
-                await editMessageText(chatId, messageId, `➕ أرسل بيانات الخدمة بالصيغة التالية:\n\`المفتاح | اسم الخدمة | السعر | الفئة\`\nمثال:\n\`boost_1 | 100 متابع تيك توك | 300 | paid\``, {
+                await editMessageText(chatId, messageId, `➕ أرسل بيانات الخدمة بالصيغة التالية:\n\`المفتاح | اسم الخدمة | السعر | الفئة\`\nمثال:\n\`boost_1 | 100 متابع تيك توك | 2500 | paid\``, {
                     inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'adm_manage_services' }]]
                 });
                 return res.sendStatus(200);
@@ -1014,7 +1006,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
             if (data === 'adm_edit_price') {
                 user.waitingForEditPrice = true;
                 saveDatabase();
-                await editMessageText(chatId, messageId, `💵 أرسل المفتاح والسعر الجديد بالصيغة:\n\`مفتاح_الخدمة السعر_الجديد\`\nمثال: \`pay_tk_f1 350\``, {
+                await editMessageText(chatId, messageId, `💵 أرسل المفتاح والسعر الجديد بالصيغة:\n\`مفتاح_الخدمة السعر_الجديد\`\nمثال: \`pay_tk_f1 3000\``, {
                     inline_keyboard: [[{ text: '⬅️ إلغاء', callback_data: 'adm_manage_services' }]]
                 });
                 return res.sendStatus(200);
@@ -1356,7 +1348,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                         [{ text: '💜 Twitch خدمات تويتش', callback_data: 'platform_twitch' }],
                         [{ text: '✈️ Telegram خدمات تيليجرام', callback_data: 'platform_telegram' }],
                         [{ text: '✖️ X (Twitter) خدمات منصة', callback_data: 'platform_x' }],
-                        [{ text: '🛒 إنشاء متجر متكامل (3500 نقطة)', callback_data: 'pay_store_create' }],
+                        [{ text: '🛒 إنشاء متجر متكامل (15000 نقطة)', callback_data: 'pay_store_create' }],
                         [{ text: '⬅️ رجوع للقائمة الرئيسية', callback_data: 'main_menu' }]
                     ]
                 };
@@ -1663,7 +1655,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
     }
 });
 
-// لوحة تحكم ومينيو الموظف المخصصة لنشر البوت (@FFEKN)
 function showPublisherMenu(chatId, messageId = null, edit = false) {
     const pubText = `📢 **إدارة نشر البوت والإعلانات (خاص بالمسؤول):**\n\n` +
         `👤 اسم المستخدم المعتمد: @${EMPLOYEE_USERNAME}\n` +
@@ -1739,7 +1730,7 @@ function showMainMenu(chatId, messageId = null, edit = false) {
 }
 
 app.get('/', (req, res) => {
-    res.send('Bot is running successfully with Publisher Role & Full Features!');
+    res.send('Bot is running successfully with High Prices & Full Features!');
 });
 
 const PORT = process.env.PORT || 3000;
