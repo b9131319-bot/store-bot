@@ -9,8 +9,8 @@ const app = express();
 app.use(bodyParser.json());
 
 const TOKEN = '8455445401:AAFt_f55qgdRLJvrZ5KfEjX3IXVsjaDnxFs';
-const OWNER_CHAT_ID = '8266396167'; // الأيدي الأساسي للمالك
-const OWNER_USERNAME = 'abod097644'; // يوزر المالك
+const OWNER_CHAT_ID = '8266396167'; 
+const OWNER_USERNAME = 'abod097644'; 
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 const BOT_USERNAME = 'th_s777'; 
@@ -18,7 +18,6 @@ const BOT_USERNAME = 'th_s777';
 const DB_FILE = path.join(__dirname, 'database.json');
 const startTime = Date.now();
 
-// نظام الحماية الذكي ضد الاختراق
 let securityState = {
     isLocked: false,
     lockReason: null,
@@ -39,7 +38,7 @@ let db = {
         maintenanceMode: false
     },
     services: {
-        'pay_tk_f1': { name: '🎵 متابعين تيك توك VIP', price: 300, category: 'paid', min: 100, max: 10000 },
+        'pay_tk_f1': { name: '✨ متابعين تيك توك VIP', price: 300, category: 'paid', min: 100, max: 10000 },
         'pay_tk_v1': { name: '🔥 مشاهدات وتفاعلات تيك توك', price: 250, category: 'paid', min: 100, max: 10000 },
         
         'pay_yt_f1': { name: '📺 مشتركين يوتيوب حقيقي', price: 350, category: 'paid', min: 100, max: 5000 },
@@ -120,7 +119,6 @@ function logError(errMessage) {
     saveDatabase();
 }
 
-// نظام فحص وكشف الثغرات ومحاولات الاختراق تلقائياً
 async function checkSecurityThreat(update, chatId) {
     const rawStr = JSON.stringify(update);
     const suspiciousPatterns = ['SELECT *', 'DROP TABLE', '<script>', 'eval(', '__proto__', '../', 'cmd.exe', 'bash -i'];
@@ -144,7 +142,6 @@ async function checkSecurityThreat(update, chatId) {
         
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: OWNER_CHAT_ID, text: alertText, parse_mode: 'Markdown' }).catch(()=>{});
         
-        // إعادة الفتح التلقائي بعد دقيقتين
         setTimeout(() => {
             securityState.isLocked = false;
             securityState.lockReason = null;
@@ -642,14 +639,11 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 user.pendingServiceOrder = { serviceKey: pendingService, quantity: quantity };
                 saveDatabase();
 
-                const promptTargetMsg = `| 🔴 | يجب أن يكون #حسابك عام!\n` +
-                    `| ⏳ | البدء: 0 - 4 دقيقة\n` +
-                    `| 🌿 | الضمان : لايوجد\n` +
-                    `| 🎁 | مشاهدات هدية لكل طلب\n` +
-                    `• #هـــام ⚠️\n` +
-                    `| ❌ | تاكد من الرابط قبل تقديم الطلب\n` +
-                    `| ❌ | لا تقدم طلب اخر على نفس الرابط قبل اكتمال الطلب الاول\n` +
-                    `| ✅ | ارسل #رابط المنشور الان :`;
+                const promptTargetMsg = `🌟 | يجب أن يكون حسابك عاماً!\n` +
+                    `⏳ | وقت البدء الفوري: 0 - 2 دقيقة\n` +
+                    `🌿 | الضمان : متوفر وفعال\n` +
+                    `❌ | تأكد من صحة الرابط قبل الإرسال\n` +
+                    `✅ | **أرسل رابط الحساب أو المنشور الآن :**`;
 
                 await sendMessage(chatId, promptTargetMsg);
                 user.waitingForInput = pendingService;
@@ -680,7 +674,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     if (cost < 1) cost = basePrice; 
 
                     if (serviceData && serviceData.category === 'free') {
-                        const orderId = 'FREE-' + Math.floor(100000 + Math.random() * 900000);
+                        const orderId = Math.floor(1000000 + Math.random() * 9000000).toString();
                         const orderObj = {
                             orderId: orderId,
                             serviceKey: pendingService,
@@ -698,25 +692,13 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                         user.lastOrder = orderId;
                         saveDatabase();
 
-                        await sendMessage(chatId, `🎁 **تم استلام طلب الخدمة المجانية بنجاح!**\n📌 رقم الطلب: \`${orderId}\`\n⏳ جاري مراجعة الطلب وتأكيده من قبل الإدارة.`);
+                        const freeSuccessMsg = `✅| تم استلام طلبك : ${orderId}\n` +
+                            `💰| التكلفة: 0 نقطة (مجاني)\n` +
+                            `🆔| ايدي الطلب: ${orderId}\n` +
+                            `💎| نقاطك الحالية: ${user.points} نقطة\n` +
+                            `🔎| لمعرفة حالة طلبك استخدم زر فحص الطلب 🔎`;
 
-                        const adminFreeMsg = `🚨 **تنبيه: طلب خدمة مجانية جديد يتطلب المراجعة!**\n\n` +
-                            `👤 العميل: [${userName}](tg://user?id=${chatId})\n` +
-                            `🆔 الأيدي: \`${chatId}\`\n` +
-                            `📦 الخدمة: ${serviceData.name}\n` +
-                            `🔢 الكمية: ${orderInfo.quantity}\n` +
-                            `🔗 الرابط: \`${targetInput}\`\n` +
-                            `📌 رقم الطلب: \`${orderId}\``;
-
-                        const adminFreeKb = {
-                            inline_keyboard: [
-                                [
-                                    { text: '✅ تأكيد وموافقة', callback_data: `admin_done_${chatId}_${orderId}` },
-                                    { text: '❌ رفض الطلب', callback_data: `admin_fail_${chatId}_${orderId}` }
-                                ]
-                            ]
-                        };
-                        await sendMessage(OWNER_CHAT_ID, adminFreeMsg, adminFreeKb);
+                        await sendMessage(chatId, freeSuccessMsg);
                         return res.sendStatus(200);
                     }
 
@@ -734,7 +716,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     user.points -= cost;
 
                     user.ordersCount += 1;
-                    const orderId = 'ORD-' + Math.floor(100000 + Math.random() * 900000);
+                    const orderId = Math.floor(1000000 + Math.random() * 9000000).toString();
                     
                     const orderObj = {
                         orderId: orderId,
@@ -753,12 +735,14 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     user.lastOrder = orderId;
                     saveDatabase();
 
-                    const supportMsg = `🔔 **تم استلام طلب الشراء برقم:** \`${orderId}\`\n\n` +
-                        `🚨 **تنبيه هام:** يرجى التواصل مع الدعم الفني فوراً لإتمام طلبك:\n` +
-                        `👤 الدعم الفني: @${OWNER_USERNAME}\n` +
-                        `📌 **أرسل لهم رقم طلبك ومشكلتك بالتفصيل ليتم تنفيذ الشراء بنجاح!**`;
+                    // رسالة تأكيد الطلب الجديدة حسب طلبك تماماً
+                    const newOrderMsg = `✅| تم استلام طلبك : ${orderId}\n` +
+                        `💰| التكلفة: ${cost} نقطة\n` +
+                        `🆔| ايدي الطلب: ${orderId}\n` +
+                        `💎| نقاطك الحالية: ${user.points} نقطة\n` +
+                        `🔎| لمعرفة حالة طلبك استخدم زر فحص الطلب 🔎`;
 
-                    await sendMessage(chatId, supportMsg);
+                    await sendMessage(chatId, newOrderMsg);
 
                     const adminMsg = `🚨 **طلب شراء مدفوع جديد!**\n\n` +
                         `👤 العميل: [${userName}](tg://user?id=${chatId})\n` +
@@ -805,7 +789,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // قسم إحصائيات وصحة البوت المباشرة (للأدمن فقط)
             if (data === 'bot_stats_public') {
                 if (!isAdmin(chatId)) {
                     await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id, text: '❌ هذا القسم مخصص للأدمنية فقط!', show_alert: true });
@@ -818,7 +801,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     if (u.orders) {
                         u.orders.forEach(o => {
                             if (o.status.includes('مكتمل')) totalCompleted++;
-                            else if (o.status.includes('جاري') || o.status.includes('انتظار') || o.status.includes('مراجعة')) totalPending++;
+                            else if (o.status.includes('جاري') || o.status.includes('انتظار')) totalPending++;
                         });
                     }
                 });
@@ -1305,14 +1288,14 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // قسم الخدمات بالاسم القصير ومحاكاة الألوان والإيموجيات الممتعة حسب الصورة الثانية
+            // قسم الخدمات بالاسم القصير ومحاكاة الألوان والإيموجيات الممتعة الحيوية المجددة
             else if (data === 'services_menu') {
                 user.waitingForInput = null;
                 user.waitingForQuantity = null;
                 saveDatabase();
                 const servKeyboard = {
                     inline_keyboard: [
-                        [{ text: '✨ مخزن العروض الخاصة والخدمات النووية', callback_data: 'special_store_menu' }],
+                        [{ text: '⚡ مخزن العروض الخاصة والخدمات النووية', callback_data: 'special_store_menu' }],
                         [{ text: '🎵 TikTok خدمات تيك توك', callback_data: 'platform_tiktok' }],
                         [{ text: '📺 YouTube خدمات يوتيوب', callback_data: 'platform_youtube' }],
                         [{ text: '📸 Instagram خدمات انستقرام', callback_data: 'platform_insta' }],
@@ -1323,7 +1306,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                         [{ text: '⬅️ رجوع للقائمة الرئيسية', callback_data: 'main_menu' }]
                     ]
                 };
-                await editMessageText(chatId, messageId, `🔵 **خدمات | متجر الخدمات الرقمية والطلب المباشر (شراء)**\nاختر المنصة أو القسم المطلوب:`, servKeyboard);
+                await editMessageText(chatId, messageId, `💎 **خدمات | متجر الخدمات الرقمية المتقدم:**\nاختر المنصة أو القسم المطلوب:`, servKeyboard);
             }
 
             else if (data === 'special_store_menu') {
@@ -1413,11 +1396,11 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 user.waitingForQuantity = serviceKey;
                 saveDatabase();
 
-                const selectQtyText = `💬 | اسم الخدمة : ${serviceData.name} 🚀\n` +
+                const selectQtyText = `💎 | اسم الخدمة : ${serviceData.name} 🚀\n` +
                     `🪙 | السعر : لكل 1000 ⇐ ${serviceData.price} نقطة\n` +
                     `🔻 | اقل طلب : 100\n` +
                     `🤖 | ايدي الخدمة : \`${serviceKey}\`\n\n` +
-                    `💎 | **ارسل العدد الذي تريد طلبه (الحد الأدنى 100):**`;
+                    `✨ | **ارسل العدد الذي تريد طلبه (الحد الأدنى 100):**`;
 
                 await editMessageText(chatId, messageId, selectQtyText, {
                     inline_keyboard: [
@@ -1629,43 +1612,43 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 function showMainMenu(chatId, messageId = null, edit = false) {
     const user = db.users[chatId] || { points: 0, ordersCount: 0 };
     const level = getUserLevel(user.ordersCount);
-    const menuText = `🎛️ **القائمة الرئيسية لمتجر تيربو بلس الملكي:**\n\n` +
-        `🪙 رصيدك: *${user.points} نقطة*\n` +
-        `🏆 مستواك: *${level.name}*\n\n` +
-        `🌹 منور المتجر يا غالي، اختر القسم المناسب:`;
+    const menuText = `🌟 **متجر تيربو بلس الملكي | العوالم الرقمية المتقدمة** 🚀\n\n` +
+        `🪙 رصيدك المتاح: *${user.points} نقطة*\n` +
+        `🏆 مستواك الحالي: *${level.name}*\n\n` +
+        `💎 منور المتجر يا غالي، اختر القسم الذي يعجبك:`;
 
     let keyboardRows = [
         [
-            { text: '🎁 الهدية اليومية', callback_data: 'daily_gift' }
+            { text: '🎁 الهدية اليومية السريعة', callback_data: 'daily_gift' }
         ],
         [
-            { text: '⚡ خدمات', callback_data: 'services_menu' },
-            { text: '👥 نظام الإحالات', callback_data: 'referral_system' }
+            { text: '✨ خدمات', callback_data: 'services_menu' },
+            { text: '👥 نظام الإحالات والأصدقاء', callback_data: 'referral_system' }
         ],
         [
-            { text: '🎮 تجميع نقاط', callback_data: 'games_menu' },
+            { text: '🎮 تجميع نقاط وألعاب', callback_data: 'games_menu' },
             { text: '🎫 تفعيل كوبون نقاط', callback_data: 'redeem_point_coupon' }
         ],
         [
-            { text: '💳 تحويل النقاط', callback_data: 'transfer_points' },
-            { text: '💰 شراء النقاط', callback_data: 'buy_points' }
+            { text: '💳 تحويل النقاط للآخرين', callback_data: 'transfer_points' },
+            { text: '💰 شراء النقاط الفورية', callback_data: 'buy_points' }
         ],
         [
             { text: '📜 شروط الاستخدام', callback_data: 'terms_of_use' },
-            { text: '📋 سجل طلباتي', callback_data: 'my_orders' }
+            { text: '📋 سجل طلباتي السابقة', callback_data: 'my_orders' }
         ],
         [
             { text: '👤 حسابي والمستوى', callback_data: 'my_account' },
             { text: '🛠️ الدعم الفني', callback_data: 'support' }
         ],
         [
-            { text: '📦 تتبع آخر طلب', callback_data: 'track_order' }
+            { text: '📦 تتبع آخر طلب نشط', callback_data: 'track_order' }
         ]
     ];
 
     if (isAdmin(chatId)) {
-        keyboardRows.push([{ text: '📊 إحصائيات وصحة البوت (للأدمن فقط)', callback_data: 'bot_stats_public' }]);
-        keyboardRows.push([{ text: '🛠️ لوحة تحكم الأدمن والمالك', callback_data: 'owner_panel' }]);
+        keyboardRows.push([{ text: '📊 إحصائيات وصحة البوت المباشرة (أدمن)', callback_data: 'bot_stats_public' }]);
+        keyboardRows.push([{ text: '🛠️ لوحة تحكم الرئيس والأدمنية', callback_data: 'owner_panel' }]);
     }
 
     const menuKeyboard = { inline_keyboard: keyboardRows };
@@ -1678,7 +1661,7 @@ function showMainMenu(chatId, messageId = null, edit = false) {
 }
 
 app.get('/', (req, res) => {
-    res.send('Bot is running successfully with Full Features & Anti-Hack!');
+    res.send('Bot is running successfully with Full Features & Enhanced Colors!');
 });
 
 const PORT = process.env.PORT || 3000;
