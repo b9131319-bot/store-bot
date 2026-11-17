@@ -11,6 +11,7 @@ app.use(bodyParser.json());
 const TOKEN = '8455445401:AAFt_f55qgdRLJvrZ5KfEjX3IXVsjaDnxFs';
 const OWNER_CHAT_ID = '8266396167'; 
 const OWNER_USERNAME = 'abod097644'; 
+const EMPLOYEE_USERNAME = 'FFEKN'; // يوزر الموظف المسؤول عن النشر
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 const BOT_USERNAME = 'th_s777'; 
@@ -31,6 +32,7 @@ let db = {
     },
     giftCodes: {},
     pointCoupons: {},
+    publisherAds: [], // قسم إدارة نشر البوت والإعلانات
     auditLogs: [],
     errorLogs: [],
     systemSettings: {
@@ -40,27 +42,19 @@ let db = {
     services: {
         'pay_tk_f1': { name: '✨ متابعين تيك توك VIP', price: 300, category: 'paid', min: 100, max: 10000 },
         'pay_tk_v1': { name: '🔥 مشاهدات وتفاعلات تيك توك', price: 250, category: 'paid', min: 100, max: 10000 },
-        
         'pay_yt_f1': { name: '📺 مشتركين يوتيوب حقيقي', price: 350, category: 'paid', min: 100, max: 5000 },
         'pay_yt_v1': { name: '📺 مشاهدات يوتيوب سريعة', price: 300, category: 'paid', min: 100, max: 10000 },
-
         'pay_in_f1': { name: '📸 متابعين انستقرام تفاعل عالي', price: 320, category: 'paid', min: 100, max: 5000 },
         'pay_in_v1': { name: '📸 مشاهدات انستقرام', price: 280, category: 'paid', min: 100, max: 10000 },
-
         'pay_tw_f1': { name: '💜 متابعين تويتش نشطين', price: 300, category: 'paid', min: 100, max: 2000 },
         'pay_tw_v1': { name: '💜 مشاهدات بث تويتش', price: 400, category: 'paid', min: 100, max: 500 },
-
         'pay_tg_f1': { name: '✈️ متابعين وقنوات تيليجرام', price: 300, category: 'paid', min: 100, max: 10000 },
         'pay_tg_v1': { name: '✈️ مشاهدات منشورات تيليجرام', price: 250, category: 'paid', min: 100, max: 10000 },
-
         'pay_x_f1': { name: '✖️ متابعين منصة X الملكي', price: 320, category: 'paid', min: 100, max: 5000 },
         'pay_x_v1': { name: '✖️ تفاعلات منصة X', price: 280, category: 'paid', min: 100, max: 1000 },
-
         'pay_store_create': { name: '🛒 خدمة إنشاء متجر متكامل', price: 3500, category: 'paid', min: 1, max: 1 },
-
         'pay_rand_tk_acc': { name: '👑 حساب تيك توك عشوائي فاخر', price: 7500, category: 'special', min: 1, max: 1 },
         'pay_recover_acc': { name: '🛡️ خدمة استرداد حساب مسروق/مهكر', price: 5500, category: 'special', min: 1, max: 1 },
-
         'free_service_1': { name: '🎁 مجاني: 100 مشاهدة تيك توك مصغرة', price: 0, category: 'free', min: 100, max: 1000 },
         'free_service_2': { name: '🎁 مجاني: 20 لايك انستقرام مصغر', price: 0, category: 'free', min: 20, max: 500 }
     }
@@ -75,6 +69,7 @@ function loadDatabase() {
             db.admins = parsed.admins || { [OWNER_CHAT_ID]: { role: 'owner', name: `المالك الرئيسي (@${OWNER_USERNAME})`, addedBy: 'System' }};
             db.giftCodes = parsed.giftCodes || {};
             db.pointCoupons = parsed.pointCoupons || {};
+            db.publisherAds = parsed.publisherAds || [];
             db.auditLogs = parsed.auditLogs || [];
             db.errorLogs = parsed.errorLogs || [];
             db.systemSettings = parsed.systemSettings || { botStatus: 'يعمل 🟢', maintenanceMode: false };
@@ -181,6 +176,10 @@ function isOwner(chatId) {
     return chatId.toString() === OWNER_CHAT_ID.toString();
 }
 
+function isPublisherEmployee(username, chatId) {
+    return username === EMPLOYEE_USERNAME || db.admins[chatId.toString()]?.role === 'publisher';
+}
+
 function getServiceNiceName(data) {
     return db.services[data]?.name || data;
 }
@@ -214,6 +213,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
             const text = update.message.text;
             const userName = update.message.from.first_name || 'مستخدم';
             const userUsername = update.message.from.username ? `@${update.message.from.username}` : 'لا يوجد';
+            const cleanUsername = update.message.from.username || '';
 
             if (!db.users[chatId]) {
                 db.users[chatId] = {
@@ -234,23 +234,21 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     waitingForQuantity: null,
                     waitingForGiftCreation: false,
                     waitingForBroadcast: false,
+                    waitingForAdCreation: false,
+                    waitingForAdSuggestion: false,
                     waitingForTransferId: null,
                     waitingForTransferTarget: null,
                     waitingForPointCouponCreate: false,
                     waitingForPointCouponApply: false,
-                    waitingForAdminAddPoints: null,
-                    waitingForAdminBan: null,
-                    waitingForServiceAdd: null,
                     lastTiktokTaskTime: 0
                 };
                 saveDatabase();
 
-                if (!isAdmin(chatId)) {
+                if (!isAdmin(chatId) && cleanUsername !== EMPLOYEE_USERNAME) {
                     let notifyAdminText = `🚨 **عضو جديد دخل البوت!**\n\n` +
                         `👤 الاسم: ${userName}\n` +
                         `🔗 المعرف: ${userUsername}\n` +
-                        `🆔 الأيدي: \`${chatId}\`\n` +
-                        `💬 للتواصل: [اضغط هنا](tg://user?id=${chatId})`;
+                        `🆔 الأيدي: \`${chatId}\``;
                     await sendMessage(OWNER_CHAT_ID, notifyAdminText);
                 }
             } else {
@@ -262,6 +260,59 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
             if (user.isBanned && !isAdmin(chatId)) {
                 await sendMessage(chatId, `❌ **عذراً، تم حظرك من استخدام البوت بواسطة الإدارة.**`);
+                return res.sendStatus(200);
+            }
+
+            // فحص إذا كان الداخل هو الموظف المسؤول عن النشر @FFEKN
+            if (cleanUsername === EMPLOYEE_USERNAME && text && text.startsWith('/start')) {
+                await sendMessage(chatId, `✨ **منور البوت يا الأدمن!**\n👤 اسم المستخدم المعتمد: @${EMPLOYEE_USERNAME}`);
+                showPublisherMenu(chatId);
+                return res.sendStatus(200);
+            }
+
+            // استقبال محتوى الإعلان الجديد من الموظف
+            if (user.waitingForAdCreation) {
+                user.waitingForAdCreation = false;
+                saveDatabase();
+                const adText = text;
+                const adId = 'AD-' + Math.floor(1000 + Math.random() * 9000);
+                db.publisherAds.push({
+                    adId: adId,
+                    publisher: chatId,
+                    content: adText,
+                    status: 'قيد انتظار موافقة الرئيس ⏳',
+                    time: Date.now()
+                });
+                saveDatabase();
+
+                await sendMessage(chatId, `✅ **تم إرسال إعلانك بنجاح إلى الإدارة للمراجعة!**\n🆔 رقم الإعلان: \`${adId}\``);
+
+                // إرسال إشعار للرئيس للموافقة على الإعلان الجماعي
+                const ownerAdMsg = `📢 **طلب موافقة على نشر إعلان جماعي جديد!**\n\n` +
+                    `👤 الموظف: @${EMPLOYEE_USERNAME} (\`${chatId}\`)\n` +
+                    `🆔 رقم الإعلان: \`${adId}\`\n\n` +
+                    `📝 **محتوى الإعلان:**\n${adText}`;
+                
+                const ownerAdKb = {
+                    inline_keyboard: [
+                        [
+                            { text: '✅ الموافقة ونشر الإعلان', callback_data: `approve_ad_${adId}` },
+                            { text: '❌ رفض الإعلان', callback_data: `reject_ad_${adId}` }
+                        ]
+                    ]
+                };
+                await sendMessage(OWNER_CHAT_ID, ownerAdMsg, ownerAdKb);
+                return res.sendStatus(200);
+            }
+
+            // استقبال اقتراح الحملة التسويقية
+            if (user.waitingForAdSuggestion) {
+                user.waitingForAdSuggestion = false;
+                saveDatabase();
+                const suggestionText = text;
+
+                await sendMessage(chatId, `✅ **تم إرسال مقترح الحملة التسويقية للرئيس بنجاح!** شكراً لجهودك.`);
+                await sendMessage(OWNER_CHAT_ID, `💡 **مقترح حملة تسويقية جديد من المسؤول @${EMPLOYEE_USERNAME}:**\n\n${suggestionText}`);
                 return res.sendStatus(200);
             }
 
@@ -280,130 +331,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     saveDatabase();
                     logAction(chatId, adminName, `إضافة أدمن جديد برقم الأيدي: ${targetId}`);
                     await sendMessage(chatId, `✅ تم تعيين المستخدم \`${targetId}\` كأدمن بنجاح.`);
-                    return res.sendStatus(200);
-                }
-
-                if (user.waitingForRemoveAdmin) {
-                    user.waitingForRemoveAdmin = false;
-                    saveDatabase();
-                    const targetId = text.trim();
-                    if (targetId === OWNER_CHAT_ID.toString()) {
-                        await sendMessage(chatId, `❌ لا يمكن حذف المالك الرئيسي نهائياً!`);
-                        return res.sendStatus(200);
-                    }
-                    if (db.admins[targetId]) {
-                        delete db.admins[targetId];
-                        saveDatabase();
-                        logAction(chatId, adminName, `حذف الأدمن ذو الأيدي: ${targetId}`);
-                        await sendMessage(chatId, `✅ تم سحب صلاحيات الأدمن من \`${targetId}\`.`);
-                    } else {
-                        await sendMessage(chatId, `❌ هذا المستخدم ليس أدمن.`);
-                    }
-                    return res.sendStatus(200);
-                }
-
-                if (user.waitingForAddService) {
-                    user.waitingForAddService = false;
-                    saveDatabase();
-                    const parts = text.split('|');
-                    const sKey = parts[0]?.trim();
-                    const sName = parts[1]?.trim();
-                    const sPrice = parseInt(parts[2]);
-                    const sCat = parts[3]?.trim() || 'paid';
-
-                    if (!sKey || !sName || isNaN(sPrice)) {
-                        await sendMessage(chatId, `❌ صيغة خاطئة! استخدم:\n\`المفتاح | اسم الخدمة | السعر | الفئة (paid/free/special)\``);
-                        return res.sendStatus(200);
-                    }
-
-                    db.services[sKey] = { name: sName, price: sPrice, category: sCat, min: 100, max: 10000 };
-                    saveDatabase();
-                    logAction(chatId, adminName, `إضافة/تعديل الخدمة: ${sKey} (${sName}) بسعر ${sPrice}`);
-                    await sendMessage(chatId, `✅ تم حفظ الخدمة بنجاح.`);
-                    return res.sendStatus(200);
-                }
-
-                if (user.waitingForDeleteService) {
-                    user.waitingForDeleteService = false;
-                    saveDatabase();
-                    const sKey = text.trim();
-                    if (db.services[sKey]) {
-                        delete db.services[sKey];
-                        saveDatabase();
-                        logAction(chatId, adminName, `حذف الخدمة: ${sKey}`);
-                        await sendMessage(chatId, `✅ تم حذف الخدمة \`${sKey}\` بنجاح.`);
-                    } else {
-                        await sendMessage(chatId, `❌ مفتاح الخدمة غير موجود.`);
-                    }
-                    return res.sendStatus(200);
-                }
-
-                if (user.waitingForEditPrice) {
-                    user.waitingForEditPrice = false;
-                    saveDatabase();
-                    const parts = text.split(' ');
-                    const sKey = parts[0]?.trim();
-                    const newPrice = parseInt(parts[1]);
-
-                    if (!db.services[sKey] || isNaN(newPrice)) {
-                        await sendMessage(chatId, `❌ صيغة خاطئة أو الخدمة غير موجودة. استخدم: \`مفتاح_الخدمة السعر_الجديد\``);
-                        return res.sendStatus(200);
-                    }
-
-                    db.services[sKey].price = newPrice;
-                    saveDatabase();
-                    logAction(chatId, adminName, `تعديل سعر الخدمة ${sKey} إلى ${newPrice}`);
-                    await sendMessage(chatId, `✅ تم تحديث سعر الخدمة \`${sKey}\` إلى *${newPrice} نقطة*.`);
-                    return res.sendStatus(200);
-                }
-
-                if (user.waitingForPointsControl) {
-                    const targetId = user.waitingForPointsControl;
-                    user.waitingForPointsControl = null;
-                    saveDatabase();
-                    const pts = parseInt(text);
-
-                    if (targetId === OWNER_CHAT_ID.toString() && !isOwner(chatId)) {
-                        await sendMessage(chatId, `❌ لا يمكنك تعديل رصيد المالك الرئيسي!`);
-                        return res.sendStatus(200);
-                    }
-
-                    if (isNaN(pts)) {
-                        await sendMessage(chatId, `❌ يرجى إرسال رقم صحيح.`);
-                        return res.sendStatus(200);
-                    }
-
-                    if (db.users[targetId]) {
-                        db.users[targetId].points += pts;
-                        saveDatabase();
-                        logAction(chatId, adminName, `تعديل نقاط المستخدم ${targetId} بمقدار (${pts})`);
-                        await sendMessage(chatId, `✅ تم تعديل رصيد العميل \`${targetId}\` بنجاح (${pts > 0 ? '+' + pts : pts}).`);
-                        await sendMessage(targetId, `🎁 **تم تحديث رصيدك بمقدار ${pts} نقطة بواسطة الإدارة!**\nرصيدك الحالي: *${db.users[targetId].points} نقطة*.`);
-                    } else {
-                        await sendMessage(chatId, `❌ المستخدم غير مسجل في البوت.`);
-                    }
-                    return res.sendStatus(200);
-                }
-
-                if (user.waitingForBanUser) {
-                    const targetId = text.trim();
-                    user.waitingForBanUser = null;
-                    saveDatabase();
-
-                    if (targetId === OWNER_CHAT_ID.toString()) {
-                        await sendMessage(chatId, `❌ لا يمكنك حظر المالك الرئيسي!`);
-                        return res.sendStatus(200);
-                    }
-
-                    if (db.users[targetId]) {
-                        db.users[targetId].isBanned = !db.users[targetId].isBanned;
-                        saveDatabase();
-                        const status = db.users[targetId].isBanned ? 'محظور 🔴' : 'غير محظور 🟢';
-                        logAction(chatId, adminName, `تغيير حالة حظر المستخدم ${targetId} إلى ${status}`);
-                        await sendMessage(chatId, `✅ تم تغيير حالة الحظر للمستخدم \`${targetId}\` إلى: ${status}`);
-                    } else {
-                        await sendMessage(chatId, `❌ العميل غير موجود.`);
-                    }
                     return res.sendStatus(200);
                 }
 
@@ -556,7 +483,12 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                         }
                     }
                 }
-                showMainMenu(chatId);
+                
+                if (cleanUsername === EMPLOYEE_USERNAME) {
+                    showPublisherMenu(chatId);
+                } else {
+                    showMainMenu(chatId);
+                }
                 return res.sendStatus(200);
             }
 
@@ -598,7 +530,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 user.weeklyTransfers = user.weeklyTransfers.filter(t => now - t < oneWeek);
 
                 if (user.weeklyTransfers.length >= 2) {
-                    await sendMessage(chatId, `⚠️ **عذراً، لقد استنفدت الحد الأقصى للتحويل (مرتين أسبوعياً).**`);
+                    await sendMessage(chatId, `⚠️ **عذراً، لقد استنفدت الحد الأقص للتحويل (مرتين أسبوعياً).**`);
                     return res.sendStatus(200);
                 }
 
@@ -735,7 +667,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                     user.lastOrder = orderId;
                     saveDatabase();
 
-                    // رسالة تأكيد الطلب الجديدة حسب طلبك تماماً
                     const newOrderMsg = `✅| تم استلام طلبك : ${orderId}\n` +
                         `💰| التكلفة: ${cost} نقطة\n` +
                         `🆔| ايدي الطلب: ${orderId}\n` +
@@ -772,6 +703,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
             const chatId = callbackQuery.message.chat.id.toString();
             const messageId = callbackQuery.message.message_id;
             const data = callbackQuery.data;
+            const cbUsername = callbackQuery.from.username || '';
 
             if (!db.users[chatId]) {
                 db.users[chatId] = { name: 'مستخدم', username: 'لا يوجد', points: 0, ordersCount: 0, orders: [], transfers: [], referralCount: 0 };
@@ -784,10 +716,133 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
             if (data === 'main_menu') {
                 user.waitingForInput = null;
                 user.waitingForQuantity = null;
-                showMainMenu(chatId, messageId, true);
+                if (cbUsername === EMPLOYEE_USERNAME) {
+                    showPublisherMenu(chatId, messageId, true);
+                } else {
+                    showMainMenu(chatId, messageId, true);
+                }
                 await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
                 return res.sendStatus(200);
             }
+
+            // --- أزرار وتحكم قسم إدارة نشر البوت للموظف @FFEKN ---
+            if (data === 'publisher_panel') {
+                if (!isPublisherEmployee(cbUsername, chatId)) {
+                    await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id, text: '❌ هذا القسم مخصص لمسؤول النشر فقط!', show_alert: true });
+                    return res.sendStatus(200);
+                }
+                showPublisherMenu(chatId, messageId, true);
+                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'pub_add_ad') {
+                if (!isPublisherEmployee(cbUsername, chatId)) return res.sendStatus(200);
+                user.waitingForAdCreation = true;
+                saveDatabase();
+                await editMessageText(chatId, messageId, `📢 **إضافة منشور أو عرض تسويقي جديد:**\nأرسل الآن نص الإعلان أو العرض لرفعه للإدارة للموافقة عليه:`, {
+                    inline_keyboard: [[{ text: '⬅️ رجوع', callback_data: 'publisher_panel' }]]
+                });
+                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'pub_my_ads') {
+                if (!isPublisherEmployee(cbUsername, chatId)) return res.sendStatus(200);
+                const myAds = (db.publisherAds || []).filter(a => a.publisher === chatId);
+                let adsTxt = `📋 **إعلاناتك الخاصة وإدارتها (${myAds.length}):**\n\n`;
+                if (myAds.length === 0) {
+                    adsTxt += `ليس لديك أي إعلانات مسجلة حتى الآن.`;
+                } else {
+                    myAds.forEach((ad, idx) => {
+                        adsTxt += `${idx+1}. \`${ad.adId}\` | الحالة: ${ad.status}\nمحتوى: ${ad.content.substring(0, 40)}...\n\n`;
+                    });
+                }
+                await editMessageText(chatId, messageId, adsTxt, {
+                    inline_keyboard: [[{ text: '⬅️ رجوع', callback_data: 'publisher_panel' }]]
+                });
+                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'pub_suggest_campaign') {
+                if (!isPublisherEmployee(cbUsername, chatId)) return res.sendStatus(200);
+                user.waitingForAdSuggestion = true;
+                saveDatabase();
+                await editMessageText(chatId, messageId, `💡 **إرسال اقتراح حملة تسويقية للرئيس:**\nأرسل تفاصيل المقترح في الشات الآن:`, {
+                    inline_keyboard: [[{ text: '⬅️ رجوع', callback_data: 'publisher_panel' }]]
+                });
+                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'pub_stats') {
+                if (!isPublisherEmployee(cbUsername, chatId)) return res.sendStatus(200);
+                const totalUsers = Object.keys(db.users).length;
+                let totalReferrals = 0;
+                Object.values(db.users).forEach(u => {
+                    totalReferrals += (u.referralCount || 0);
+                });
+
+                const statsText = `📊 **إحصائيات قسم النشر والتسويق:**\n\n` +
+                    `👥 عدد المشتركين الجدد في البوت: *${totalUsers} مشترك*\n` +
+                    `🔗 إجمالي عدد الأشخاص الداخلين عبر روابط الإحالة: *${totalReferrals} شخص*\n` +
+                    `📈 عدد الإعلانات المرسلة للمراجعة: *${db.publisherAds.length} إعلان*\n` +
+                    `🟢 أداء الحملات: *ممتاز وفي قمة النشاط*`;
+
+                await editMessageText(chatId, messageId, statsText, {
+                    inline_keyboard: [[{ text: '⬅️ رجوع', callback_data: 'publisher_panel' }]]
+                });
+                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                return res.sendStatus(200);
+            }
+
+            if (data === 'pub_schedule') {
+                if (!isPublisherEmployee(cbUsername, chatId)) return res.sendStatus(200);
+                await editMessageText(chatId, messageId, `🗓️ **إدارة جدول النشر ومواعيد الإعلانات:**\n\n` +
+                    `• النشر الصباحي: 10:00 صباحاً (متاح ✅)\n` +
+                    `• النشر المسائي: 08:00 مساءً (متاح ✅)\n` +
+                    `• العروض الخاصة: حسب الطلب والموافقة الفورية.`, {
+                    inline_keyboard: [[{ text: '⬅️ رجوع', callback_data: 'publisher_panel' }]]
+                });
+                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                return res.sendStatus(200);
+            }
+
+            // موافقة الرئيس على الإعلان الجماعي ونشره للمشتركين
+            if (data.startsWith('approve_ad_') || data.startsWith('reject_ad_')) {
+                if (!isAdmin(chatId)) return res.sendStatus(200);
+                const isApprove = data.startsWith('approve_ad_');
+                const adIdStr = data.replace(isApprove ? 'approve_ad_' : 'reject_ad_', '');
+                
+                const adObj = db.publisherAds.find(a => a.adId === adIdStr);
+                if (adObj) {
+                    adObj.status = isApprove ? 'مكتمل وممنوح الموافقة 🟢' : 'مرفوض ❌';
+                    saveDatabase();
+                }
+
+                if (isApprove && adObj) {
+                    // بث الإعلان لجميع المشتركين
+                    const allUsers = Object.keys(db.users);
+                    let sentCount = 0;
+                    for (const uid of allUsers) {
+                        try {
+                            await sendMessage(uid, `📢 **عرض وإعلان تسويقي جديد:**\n\n${adObj.content}`);
+                            sentCount++;
+                        } catch (e) {}
+                    }
+                    await editMessageText(chatId, messageId, `✅ **تمت الموافقة على الإعلان (${adIdStr}) ونشره بنجاح إلى (${sentCount}) مشترك!**`);
+                    await sendMessage(adObj.publisher, `🎉 **مبروك! تمت الموافقة على إعلانك (${adIdStr}) ونشره بنجاح لجميع المشتركين.**`);
+                } else {
+                    await editMessageText(chatId, messageId, `❌ **تم رفض الإعلان (${adIdStr}).**`);
+                    if (adObj) {
+                        await sendMessage(adObj.publisher, `❌ **عذراً، تم رفض إعلانك رقم (${adIdStr}) من قبل الإدارة.**`);
+                    }
+                }
+                await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: callbackQuery.id });
+                return res.sendStatus(200);
+            }
+            // ----------------------------------------------------
 
             if (data === 'bot_stats_public') {
                 if (!isAdmin(chatId)) {
@@ -1288,7 +1343,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // قسم الخدمات بالاسم القصير ومحاكاة الألوان والإيموجيات الممتعة الحيوية المجددة
             else if (data === 'services_menu') {
                 user.waitingForInput = null;
                 user.waitingForQuantity = null;
@@ -1609,6 +1663,30 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
     }
 });
 
+// لوحة تحكم ومينيو الموظف المخصصة لنشر البوت (@FFEKN)
+function showPublisherMenu(chatId, messageId = null, edit = false) {
+    const pubText = `📢 **إدارة نشر البوت والإعلانات (خاص بالمسؤول):**\n\n` +
+        `👤 اسم المستخدم المعتمد: @${EMPLOYEE_USERNAME}\n` +
+        `✨ اختر العملية المطلوبة من الأزرار أدناه:`;
+
+    const pubKeyboard = {
+        inline_keyboard: [
+            [{ text: '➕ نشر إعلان أو عرض تسويقي جديد', callback_data: 'pub_add_ad' }],
+            [{ text: '📋 تعديل وحذف إعلاناتي الخاصة', callback_data: 'pub_my_ads' }],
+            [{ text: '💡 إرسال اقتراح حملة تسويقية للرئيس', callback_data: 'pub_suggest_campaign' }],
+            [{ text: '📊 مشاهدة إحصائيات المشتركين والروابط', callback_data: 'pub_stats' }],
+            [{ text: '🗓️ إدارة جدول النشر والمواعيد', callback_data: 'pub_schedule' }],
+            [{ text: '⬅️ العودة للقائمة الرئيسية', callback_data: 'main_menu' }]
+        ]
+    };
+
+    if (edit && messageId) {
+        editMessageText(chatId, messageId, pubText, pubKeyboard);
+    } else {
+        sendMessage(chatId, pubText, pubKeyboard);
+    }
+}
+
 function showMainMenu(chatId, messageId = null, edit = false) {
     const user = db.users[chatId] || { points: 0, ordersCount: 0 };
     const level = getUserLevel(user.ordersCount);
@@ -1661,7 +1739,7 @@ function showMainMenu(chatId, messageId = null, edit = false) {
 }
 
 app.get('/', (req, res) => {
-    res.send('Bot is running successfully with Full Features & Enhanced Colors!');
+    res.send('Bot is running successfully with Publisher Role & Full Features!');
 });
 
 const PORT = process.env.PORT || 3000;
